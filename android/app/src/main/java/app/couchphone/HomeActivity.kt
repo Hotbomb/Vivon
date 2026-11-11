@@ -93,9 +93,7 @@ class HomeActivity : Activity() {
         if (id != android.view.Display.DEFAULT_DISPLAY) Dex.homeDisplay = id
     }
 
-    override fun onMovedToDisplay(displayId: Int, config: android.content.res.Configuration?) {
-        super.onMovedToDisplay(displayId, config); noteDisplay()
-    }
+    override fun onConfigurationChanged(c: android.content.res.Configuration) { super.onConfigurationChanged(c); noteDisplay() }
     // the video background stops while an app is in front
     override fun onPause() { super.onPause(); front = false; js("window.tv && tv.pause && tv.pause()") }
     @Volatile private var front = false
