@@ -45,6 +45,21 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      # The TV pointer's helper (android/native/couchmouse.c), a small program the app runs as root.
+      # Built with the Android NDK that GitHub's runners already have, for 64-bit and 32-bit phones.
+      - name: Build the mouse helper
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then NDK=$(ls -d "$ANDROID_HOME"/ndk/* 2>/dev/null | sort -V | tail -1); fi
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then echo "::error::No Android NDK on this runner"; exit 1; fi
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          OUT=android/app/src/main/jniLibs
+          mkdir -p "$OUT/arm64-v8a" "$OUT/armeabi-v7a"
+          "$BIN/aarch64-linux-android29-clang" -O2 -Wall -Wextra -Werror -o "$OUT/arm64-v8a/libcouchmouse.so" android/native/couchmouse.c
+          "$BIN/armv7a-linux-androideabi29-clang" -O2 -Wall -Wextra -Werror -o "$OUT/armeabi-v7a/libcouchmouse.so" android/native/couchmouse.c
+          "$BIN/llvm-strip" "$OUT"/*/libcouchmouse.so
+          file "$OUT"/*/libcouchmouse.so
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
@@ -63,6 +78,8 @@ jobs:
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/couch-phone-$VERSION_NAME.apk"
           ls -la out
+          # the mouse helper must be inside the APK
+          unzip -l "out/couch-phone-$VERSION_NAME.apk" | grep libcouchmouse.so
 
       - name: Check the signature
         if: ${{ env.HAS_KEY == 'true' }}

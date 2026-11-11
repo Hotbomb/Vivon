@@ -115,6 +115,7 @@ export const api = {
   savePeople: (people) => call('POST', '/api/people', { people }),
   settings: () => call('GET', '/api/settings'),   // the TV home's Home settings (its language)
   health: () => call('GET', '/api/health'),
+  secure: () => call('GET', '/api/secure'),   // Couch Phone: the remote's https address
   pair: (key) => call('POST', '/api/pair', { key }),
 };
 

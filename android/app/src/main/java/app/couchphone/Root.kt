@@ -149,7 +149,7 @@ object RootInput {
         }
     }
 
-    fun key(code: Int, display: Int, longPress: Boolean = false) = helperSend("k $code $display ${if (longPress) 1 else 0}")
+    fun key(code: Int, display: Int, longPress: Boolean = false, meta: Int = 0) = helperSend("k $code $display ${if (longPress) 1 else 0} $meta")
 
     fun text(s: String, display: Int) =
         helperSend("t $display " + Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))

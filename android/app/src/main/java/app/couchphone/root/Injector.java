@@ -20,7 +20,7 @@ import java.lang.reflect.Method;
  * Every event is stamped with a display id, so it goes to the DeX screen, not the phone's own.
  *
  * Commands:
- *   k <keycode> <display> <0|1 long press>
+ *   k <keycode> <display> <0|1 long press> [meta state, e.g. 4096 for Ctrl]
  *   t <display> <text as base64 UTF-8>
  *   p                       answers "pong"
  *
@@ -69,7 +69,7 @@ public final class Injector {
                 System.out.flush();
                 break;
             case "k":
-                key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]));
+                key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]), p.length > 4 ? Integer.parseInt(p[4]) : 0);
                 break;
             case "t":
                 text(Integer.parseInt(p[1]), new String(Base64.decode(p.length > 2 ? p[2] : "", Base64.DEFAULT), "UTF-8"));
@@ -85,19 +85,23 @@ public final class Injector {
         inject.invoke(inputManager, e, MODE_ASYNC);
     }
 
-    private static KeyEvent ev(long down, long now, int action, int code, int repeat, int flags) {
-        return new KeyEvent(down, now, action, code, repeat, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+    private static KeyEvent ev(long down, long now, int action, int code, int repeat, int flags, int meta) {
+        return new KeyEvent(down, now, action, code, repeat, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
                 flags | KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD);
     }
 
-    private static void key(int code, int display, boolean longPress) throws Exception {
+    /** A key press. With Ctrl in meta (paste is Ctrl+V), the Ctrl key itself goes down first and up last. */
+    private static void key(int code, int display, boolean longPress, int meta) throws Exception {
         long down = SystemClock.uptimeMillis();
-        send(ev(down, down, KeyEvent.ACTION_DOWN, code, 0, 0), display);
+        boolean ctrl = (meta & KeyEvent.META_CTRL_ON) != 0;
+        if (ctrl) send(ev(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, KeyEvent.META_CTRL_LEFT_ON | KeyEvent.META_CTRL_ON), display);
+        send(ev(down, down, KeyEvent.ACTION_DOWN, code, 0, 0, meta), display);
         if (longPress) {
             Thread.sleep(600);
-            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, code, 1, KeyEvent.FLAG_LONG_PRESS), display);
+            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, code, 1, KeyEvent.FLAG_LONG_PRESS, meta), display);
         }
-        send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0), display);
+        send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, meta), display);
+        if (ctrl) send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, 0), display);
     }
 
     /** Types text with the virtual keyboard map. Characters it has no keys for are skipped. */

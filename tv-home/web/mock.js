@@ -86,6 +86,8 @@
   if (arg("sungrade")) cfg.home.ambient_sun_grade = arg("sungrade") !== "off";
   if (arg("unit")) cfg.home.wx_unit = arg("unit");   // home.wx_unit: c or f (#56)
   if (arg("video")) cfg.home.video_url = arg("video");
+  // Couch Phone (?couchphone=1): its Bluetooth and Wi-Fi screens, with made-up devices and networks
+  if (arg("couchphone")) { cfg.mode = "on-tv"; cfg.app = "couch-phone"; cfg.tvs[0].quick = ["look", "bluetooth", "network"]; }
   window.COUCH_CONFIG = cfg;
 
   // ---------- the launcher's updater (Updater.kt), for ?update= ----------
@@ -209,12 +211,29 @@
              art: arg("music") === "noart" ? null : "backgrounds/" + x[2] + ".jpg",
              position: 45, duration: 210 };
   }
+  var mockBt = { available: true, allowed: true, on: true, searching: false, pairing: null, note: null,
+    paired: [{ address: "AA:00:00:00:00:01", name: "Living room soundbar", kind: "speaker", connected: true },
+             { address: "AA:00:00:00:00:02", name: "Wireless headphones", kind: "headphones", connected: false },
+             { address: "AA:00:00:00:00:03", name: "Game controller", kind: "gamepad", connected: false }],
+    found: [{ address: "AA:00:00:00:00:04", name: "Bluetooth keyboard", kind: "keyboard", signal: -50 }] };
+  var mockWifi = { on: true, current: "Home Wi-Fi", address: "192.168.1.23", networks: [
+    { ssid: "Home Wi-Fi", bars: 4, security: "wpa2", band: "5 GHz", saved: true, current: true },
+    { ssid: "Home Wi-Fi 2.4", bars: 3, security: "wpa2", band: "2.4 GHz", saved: true, current: false },
+    { ssid: "Neighbour", bars: 2, security: "wpa3", band: "5 GHz", saved: false, current: false },
+    { ssid: "Cafe guest", bars: 1, security: "open", band: "2.4 GHz", saved: false, current: false }] };
   window.MOCK_API = function (method, path, body) {
     var empty = /[?&]empty\b/.test(q), down = /[?&]down\b/.test(q);
     return new Promise(function (resolve, reject) {
       setTimeout(function () {
         if (down) return reject(new Error("The computer isn't answering."));
         // Now playing (#31): ?music=1, a song that previous and next step through, play and pause toggle
+        if (path.indexOf("/api/bluetooth") === 0) {
+          if (method === "POST" && body.action === "search") mockBt.searching = true;
+          if (method === "POST" && body.action === "on") mockBt.on = true;
+          if (method === "POST" && body.action === "off") mockBt.on = false;
+          return resolve(Object.assign({ ok: true }, mockBt));
+        }
+        if (path.indexOf("/api/wifi") === 0) return resolve(Object.assign({ ok: true }, mockWifi));
         if (path.indexOf("/api/music") === 0) return resolve({ ok: true, music: arg("music") ? mockSong() : null });
         if (path.indexOf("/api/key") === 0) {
           var k = body && body.key;

@@ -111,6 +111,7 @@ class App : Application() {
 /** Keeps the web server and the DeX watch running. Started at boot, when the app opens, and after an update. */
 class BridgeService : Service() {
     private var server: Server? = null
+    private var secureServer: Server? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -144,6 +145,8 @@ class BridgeService : Service() {
         Root.shOrNull("appops set $p SYSTEM_ALERT_WINDOW allow; dumpsys deviceidle whitelist +$p; " +
             "cmd appops set $p RUN_ANY_IN_BACKGROUND allow; cmd appops set $p RUN_IN_BACKGROUND allow")
         RootInput.warmUp()
+        // Bluetooth: the permissions to list, find and pair devices (granted with root, no pop-ups).
+        Bt.grantPermissions()
         Now.push()
     }
 
@@ -153,12 +156,27 @@ class BridgeService : Service() {
             server = Server(this, Store.port).also { it.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false) }
             Log.i("couchphone", "server on port ${Store.port}")
         } catch (e: Exception) { Log.e("couchphone", "server failed to start", e) }
+        // The same remote on https (port + 1), for the air mouse and speaking. Making the keys takes
+        // a moment, so it starts on its own thread.
+        Thread {
+            synchronized(this) {
+                if (secureServer != null) return@Thread
+                try {
+                    secureServer = Server(this, Tls.port, secure = true).also {
+                        it.makeSecure(Tls.serverSocketFactory(), null)
+                        it.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+                    }
+                    Log.i("couchphone", "secure server on port ${Tls.port}")
+                } catch (e: Exception) { Log.e("couchphone", "secure server failed to start", e) }
+            }
+        }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int { startServer(); return START_STICKY }
 
     override fun onDestroy() {
         server?.stop(); server = null
+        secureServer?.stop(); secureServer = null
         runCatching { wifiLock?.release() }
         super.onDestroy()
     }

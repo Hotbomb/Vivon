@@ -46,13 +46,19 @@ android {
     kotlinOptions { jvmTarget = "17" }
     // Sideloaded app: lint's Play Store checks would only stop the build.
     lint { checkReleaseBuilds = false; abortOnError = false }
-    packaging { resources { excludes += setOf("META-INF/*.kotlin_module") } }
+    packaging {
+        resources { excludes += setOf("META-INF/*.kotlin_module") }
+        // The mouse helper (libcouchmouse.so) is run as a program, so it must be a real file on the phone.
+        jniLibs { useLegacyPackaging = true }
+    }
 }
 
 dependencies {
     // HTTP + WebSocket server (BSD-3-Clause).
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
+    // Lets the Bluetooth panel use Android's hidden unpair and connect calls (Apache-2.0).
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 }
 
 // The phone remote (remote/dist) and the TV home page (tv-home/web) live elsewhere in the repo.

@@ -66,6 +66,17 @@ object Dex {
         return true
     }
 
+    /** Opens a system screen by its action (Bluetooth or Wi-Fi settings) on the TV. */
+    fun openAction(action: String): Boolean {
+        val d = target()
+        if (Root.available != false) {
+            val out = Root.shOrNull("am start --display $d -f 0x10000000 -a $action 2>&1", 12_000)
+            if (out != null && !out.contains("Error") && !out.contains("Exception")) return true
+        }
+        plainStart(Intent(action), d)
+        return true
+    }
+
     /**
      * Root start: `am start --display` puts it on the TV even while this app is in the background,
      * and windowing mode 1 (full screen) opens it maximised instead of in a small DeX window.

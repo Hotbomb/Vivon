@@ -223,7 +223,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   const pDown = (e) => {
     if (e.target.closest?.('.pointer-toggle, .pad-msg')) return;
     ref.current.setPointerCapture(e.pointerId);
-    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     if (touches.current.size === 1) pg.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false, two: false };
     else if (pg.current) pg.current.two = true;
     const r = ref.current.getBoundingClientRect();
@@ -233,8 +233,9 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     const last = touches.current.get(e.pointerId); const s = pg.current;
     if (!last || !s) return;
     const dx = e.clientX - last.x; const dy = e.clientY - last.y;
-    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > TAP_MOVE) s.moved = true;
+    touches.current.set(e.pointerId, { ...last, x: e.clientX, y: e.clientY });
+    // each finger from where it started, so a second finger landing elsewhere is still a tap
+    if (Math.hypot(e.clientX - last.sx, e.clientY - last.sy) > TAP_MOVE) s.moved = true;
     if (e.pointerId !== s.id) return;   // with two fingers, the first one drives the scroll
     const r = ref.current.getBoundingClientRect();
     setSpot({ x: e.clientX - r.left, y: e.clientY - r.top });
@@ -247,6 +248,8 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     if (touches.current.size) return;
     pg.current = null; setSpot(null);
     if (s && !s.moved && !s.two && Date.now() - s.t < TAP_MS) { addPointer('click'); flash('ok'); tick(); }
+    // a two-finger tap is a right click, like a laptop's touchpad
+    else if (s && !s.moved && s.two && Date.now() - s.t < TAP_MS && onPointer) { onPointer({ button: 'right' }); tick(); }
   };
 
   const down = (e) => {

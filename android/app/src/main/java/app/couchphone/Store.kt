@@ -49,9 +49,10 @@ object Store {
         .put("people", people())
         .put("weather", weather())
         .put("tvs", JSONArray().put(JSONObject().put("id", TV_ID).put("name", tvName()).put("kind", "dex")
-            .put("quick", JSONArray(listOf("look")))))
+            .put("quick", JSONArray(listOf("look", "bluetooth", "network")))))
         .put("default_tv", TV_ID)
         .put("mode", "on-tv")
+        .put("app", "couch-phone")   // the TV home opens its own Bluetooth and Wi-Fi screens (connect.js)
         .put("ask", JSONObject().put("enabled", false))
 
     fun tvName(): String = str("tv_name", "TV") ?: "TV"

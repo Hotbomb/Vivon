@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.PowerManager
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 
 class ApiError(val status: Int, message: String) : Exception(message)
@@ -33,7 +34,33 @@ object Tv {
         return KeyEvent.keyCodeToString(code)
     }
 
-    fun text(s: String) { RootInput.text(s, Dex.target()) }
+    /**
+     * Types text on the TV. Plain letters, numbers and symbols are typed key by key. Text with
+     * anything the virtual keyboard has no key for (accents, emoji, other alphabets) is put on the
+     * clipboard and pasted with Ctrl+V, which works in apps, browsers and the home screen alike.
+     */
+    fun text(s: String) {
+        val map = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
+        val typeable = s.codePoints().allMatch { cp -> map.getEvents(Character.toChars(cp)) != null }
+        if (typeable) { RootInput.text(s, Dex.target()); return }
+        if (!copy(s)) throw ApiError(500, "Could not put the text on the clipboard.")
+        RootInput.key(KeyEvent.KEYCODE_V, Dex.target(), false, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON)
+    }
+
+    /** Sets the phone's clipboard (on the main thread, as Android wants) and waits for it. */
+    private fun copy(s: String): Boolean {
+        val done = java.util.concurrent.CountDownLatch(1)
+        var ok = false
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            ok = runCatching {
+                ctx.getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Couch Phone", s))
+            }.isSuccess
+            done.countDown()
+        }
+        done.await(2, java.util.concurrent.TimeUnit.SECONDS)
+        return ok
+    }
 
     private val MEDIA = setOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
         KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_STOP,

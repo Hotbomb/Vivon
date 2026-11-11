@@ -40,3 +40,13 @@ export const Send = (p) => <I d="M12 19V5M6 11l6-6 6 6" {...p} />;
 export const Wifi = (p) => <I {...p}><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.2a10 10 0 0 1 13 0M9 15.8a5 5 0 0 1 6 0" /><circle cx="12" cy="19" r="1" fill="currentColor" /></I>;
 export const Sparkle = (p) => <I d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" {...p} />;
 export const People = (p) => <I {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3 19.5a6 6 0 0 1 12 0" /><circle cx="17" cy="9" r="2.6" /><path d="M15.5 14.2a5 5 0 0 1 5.5 4.8" /></I>;
+// Couch Phone: the TV pointer, typing and the secure remote.
+export const Mouse = (p) => <I {...p}><rect x="6.5" y="3" width="11" height="18" rx="5.5" /><path d="M12 3v6.5M6.5 9.5h11" /></I>;
+export const AirMouse = (p) => <I {...p}><rect x="8" y="7" width="8" height="14" rx="2.5" /><path d="M12 17.5h.01M7 4.5a7 7 0 0 1 10 0M4.5 2a10.5 10.5 0 0 1 15 0" /></I>;
+export const Backspace = (p) => <I {...p}><path d="M8.5 5H20a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 20 19H8.5L2.5 12z" /><path d="M11.5 9.5l5 5M16.5 9.5l-5 5" /></I>;
+export const Enter = (p) => <I d="M19 5v6a3 3 0 0 1-3 3H5M9 10l-4 4 4 4" {...p} />;
+export const Tab = (p) => <I d="M3 12h14M13 8l4 4-4 4M21 6v12" {...p} />;
+export const Left = (p) => <I d="M15 5l-7 7 7 7" {...p} />;
+export const Right = (p) => <I d="M9 5l7 7-7 7" {...p} />;
+export const Lock = (p) => <I {...p}><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></I>;
+export const Updown = (p) => <I d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4" {...p} />;

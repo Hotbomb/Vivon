@@ -7,6 +7,15 @@
   var token = null;
   try { token = localStorage.getItem(KEY); } catch (e) { /* private mode: the cookie still works */ }
   if (!token) { var m = document.cookie.match(/(?:^|; )couchtv_token=([^;]+)/); if (m) token = decodeURIComponent(m[1]); }
+  // Moving to the secure (https) remote: the plain one passes this phone's token in the link's
+  // #ctoken= part (never sent over the network), so the phone does not have to pair again.
+  var handed = location.hash.match(/[#&]ctoken=([0-9a-f]{16,128})/);
+  if (handed) {
+    token = handed[1];
+    try { localStorage.setItem(KEY, token); } catch (e) { }
+    document.cookie = 'couchtv_token=' + encodeURIComponent(token) + '; path=/; max-age=31536000; SameSite=Strict' + (location.protocol === 'https:' ? '; Secure' : '');
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
+  }
 
   function isApi(url) {
     try { var u = new URL(url, location.href); return u.origin === location.origin && u.pathname.indexOf('/api/') === 0; } catch (e) { return false; }

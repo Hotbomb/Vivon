@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
  * Only this phone and devices on the same Wi-Fi network get an answer (App.allowedClient).
  * Every /api call needs a token from pairing except /api/health and /api/pair*.
  */
-class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
+class Server(private val ctx: Context, port: Int, private val secure: Boolean = false) : NanoWSD(port) {
     private val assets = ctx.assets
 
     override fun useGzipWhenAccepted(r: Response) = false   // gzip would hold back server-sent events
@@ -43,6 +43,12 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         when {
             uri.startsWith("/api/") -> api(s)
             uri.startsWith("/ontv/") -> asset("www/ontv/" + uri.removePrefix("/ontv/"))
+            // The secure remote's root certificate, for phones to trust (see Tls.kt). Public by design.
+            uri == "/couch-phone.crt" -> newFixedLengthResponse(Response.Status.OK, "application/x-x509-ca-cert",
+                java.io.ByteArrayInputStream(Tls.caDer()), Tls.caDer().size.toLong()).apply { addHeader("Content-Disposition", "attachment; filename=\"couch-phone.crt\"") }
+            uri == "/couch-phone.mobileconfig" -> Tls.mobileconfig().toByteArray().let {
+                newFixedLengthResponse(Response.Status.OK, "application/x-apple-aspen-config", java.io.ByteArrayInputStream(it), it.size.toLong())
+                    .apply { addHeader("Content-Disposition", "attachment; filename=\"couch-phone.mobileconfig\"") } }
             uri == "/tv" -> redirect("/tv/")
             uri == "/tv/config.js" -> newFixedLengthResponse(Response.Status.OK, "application/javascript",
                 "window.COUCH_CONFIG = " + Store.publicConfig() + ";\n").noCache()
@@ -129,6 +135,15 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 val t = body(s).optString("text").ifEmpty { throw ApiError(400, "text is required") }
                 Tv.text(t); json(200, ok())
             }
+            "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
+            // Where the secure remote is (air mouse and speak need https), and whether this page is on it.
+            "GET /api/secure" -> json(200, ok().put("secure", secure).put("port", Tls.port)
+                .put("url", App.lanAddress()?.let { "https://$it:${Tls.port}/" } ?: JSONObject.NULL)
+                .put("android_cert", "/couch-phone.crt").put("ios_profile", "/couch-phone.mobileconfig"))
+            "GET /api/bluetooth" -> json(200, ok(Bt.state()))
+            "POST /api/bluetooth" -> json(200, ok(Bt.act(body(s))))
+            "GET /api/wifi" -> json(200, ok(Wifi.state()))
+            "POST /api/wifi" -> json(200, ok(Wifi.act(body(s))))
             "GET /api/apps" -> json(200, ok().put("apps", appList()))
             "POST /api/launch" -> launch(body(s).optString("app"))
             "POST /api/volume" -> volume(body(s))
@@ -189,6 +204,13 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             return json(200, ok().put("app", Now.describe(BuildConfig.APPLICATION_ID)))
         }
         if (target == "settings") return launch("com.android.settings")
+        // Android's own Bluetooth and Wi-Fi screens (the TV home's fallback for anything its panels cannot do)
+        val screen = mapOf("bluetooth" to "android.settings.BLUETOOTH_SETTINGS", "network" to "android.settings.WIFI_SETTINGS",
+            "wifi" to "android.settings.WIFI_SETTINGS")[target]
+        if (screen != null) {
+            if (!Dex.openAction(screen)) throw ApiError(500, "Could not open the settings screen.")
+            return json(200, ok().put("app", Now.describe("com.android.settings")))
+        }
         if (!Regex("[A-Za-z0-9_.]+").matches(target) || !Tv.hasPackage(target)) throw ApiError(404, "$target is not installed")
         if (!Dex.launchPackage(target)) throw ApiError(404, "${Tv.label(target)} has no screen to open")
         Now.push()
@@ -313,6 +335,8 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                     m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold")); JSONObject().put("ok", true).put("key", m.getString("key")) }
                     m.has("volume") -> { volume(JSONObject().put("action", m.getString("volume"))); JSONObject().put("ok", true) }
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
+                    // The air mouse sends many small moves: no answer for those, to keep the socket quiet.
+                    m.has("pointer") -> { Pointer.handle(m.getJSONObject("pointer")); if (m.optBoolean("quiet")) return; JSONObject().put("ok", true) }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")
                 }
             } catch (e: ApiError) { JSONObject().put("ok", false).put("error", e.message).put("status", e.status) }

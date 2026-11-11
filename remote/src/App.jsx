@@ -7,6 +7,8 @@ import { TopBar, NowPlaying, Pad, Controls, AskButton } from './Remote.jsx';
 import { Watch } from './Watch.jsx';
 import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sheets.jsx';
 import { usePullDown, usePageDrag } from './gestures.js';
+import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure } from './Couch.jsx';
+import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
 const store = {
@@ -283,6 +285,25 @@ export default function App() {
   // iOS only raises the keyboard if focus happens inside the tap itself, and a closed sheet is inert
   // (cannot take focus), so open it synchronously, then focus, all within the same tap.
   const openAsk = () => { tick(); flushSync(() => setSheet('ask')); askInput.current?.focus({ preventScroll: true }); };
+  // Couch Phone's tools. The keyboard focuses inside the tap (iOS), and speaking and the air mouse
+  // start inside the tap too (iOS asks for the microphone and motion only then). Both need the
+  // secure (https) remote: on the plain one they explain how to move there instead.
+  const kbInput = useRef(null);
+  const speakRef = useRef(null);
+  const airRef = useRef(null);
+  const [secureWhy, setSecureWhy] = useState('speak');
+  const openKeyboard = () => { tick(); flushSync(() => setSheet('keyboard')); kbInput.current?.focus({ preventScroll: true }); };
+  const openSpeak = () => {
+    tick();
+    if (!secure) { setSecureWhy('speak'); setSheet('secure'); return; }
+    flushSync(() => setSheet('speak')); speakRef.current?.start();
+  };
+  const openAir = () => {
+    tick();
+    if (!secure) { setSecureWhy('air'); setSheet('secure'); return; }
+    flushSync(() => setSheet('air')); airRef.current?.start();
+  };
+  useEffect(() => { setPointerErrorHandler((e) => say(e.message, 'err')); }, [say]);
 
   const sleepEnds = tv?.sleep?.ends;
   const sleepLeft = sleepEnds ? `${Math.max(0, Math.round((new Date(sleepEnds) - Date.now()) / 60000))}m` : null;
@@ -336,6 +357,7 @@ export default function App() {
     </nav>
   );
 
+  const tvKind = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind;
   const remote = (
     <div className="remote-col">
       <div className="pull-zone" {...pull}>
@@ -344,8 +366,9 @@ export default function App() {
       {tvId && <button className="tv-chip glass" onClick={() => { tick(); setSheet('more'); }}><Ic.Screen size={15} /> {t('this_tv', { name: thisTv?.name || t('this') })}</button>}
       <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />
       </div>
-      <Pad onPointer={(thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind === 'lg' ? (d) => api.pointer(d) : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
+      <Pad onPointer={tvKind === 'lg' ? (d) => api.pointer(d) : tvKind === 'dex' ? padPointer : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
         tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} />
+      {tvKind === 'dex' && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)} />}
       <Controls tv={tv} onKey={onKey} onVolume={onVolume} />
       {wide && askOn && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
     </div>
@@ -379,6 +402,10 @@ export default function App() {
         picture={tv?.picture} pictureInfo={pictureInfo} onPicture={onPicture} onClose={() => setSheet(null)} sleepEnds={sleepEnds} sleepError={sleepError} onSleep={onSleep}
         onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} />
       <ArrangeSheet open={sheet === 'arrange'} onClose={() => setSheet(null)} tvName={thisTv?.name} hidden={hidden} />
+      <KeyboardSheet ref={kbInput} open={sheet === 'keyboard'} onClose={() => setSheet(null)} say={say} onSpeak={openSpeak} />
+      <SpeakSheet ref={speakRef} open={sheet === 'speak'} onClose={() => setSheet(null)} say={say} />
+      <AirMouseSheet ref={airRef} open={sheet === 'air'} onClose={() => setSheet(null)} say={say} onKey={onKey} />
+      <SecureSheet open={sheet === 'secure'} onClose={() => setSheet(null)} why={secureWhy} />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} onSaved={(list) => { setPeople(list); if (who && who !== 'both' && !list.some((p) => p.id === who)) setWho(list[0]?.id || 'both'); }} />
       {!who && people.length > 0 && <Onboarding people={people} standalone={standalone} onPick={pickWho} />}
     </div>
