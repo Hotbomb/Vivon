@@ -1,0 +1,15 @@
+# builds
+*.apk
+*.aab
+build/
+.gradle/
+.kotlin/
+local.properties
+node_modules/
+remote/dist/
+# copied in at build time from remote/dist and tv-home/web
+android/app/src/main/assets/
+# keys: only the password-protected release key in signing/ is committed
+*.jks
+*.keystore
+*.pk8
