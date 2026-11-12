@@ -29,8 +29,18 @@
 
   // Everything that can be picked: the usual controls, plus anything drawn with a hand cursor
   // (cards and posters that only listen for clicks). An element inside another pickable one is
-  // left out, so a poster card is one stop, not three.
-  function candidates() {
+  // left out, so a poster card is one stop, not three. The scan (the costly part) is kept until the
+  // page changes; each press only measures where the kept elements are now.
+  var kept = null, dirty = true;
+  try {
+    new MutationObserver(function (recs) {
+      for (var i = 0; i < recs.length; i++) if (recs[i].target !== ring) { dirty = true; return; }
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ["class", "style", "hidden", "disabled", "aria-hidden", "href", "role", "tabindex"] });
+  } catch (e) { }
+  addEventListener("resize", function () { dirty = true; });
+
+  function scan() {
     var set = new Set(document.querySelectorAll(SEL));
     var all = document.body ? document.body.getElementsByTagName("*") : [];
     for (var i = 0, n = Math.min(all.length, 6000); i < n; i++) {
@@ -45,9 +55,20 @@
     set.forEach(function (el) {
       if (el === ring) return;
       for (var p = el.parentElement; p; p = p.parentElement) if (set.has(p) && p.tagName !== "BODY" && p.tagName !== "HTML") return;
+      out.push(el);
+    });
+    return out;
+  }
+
+  function candidates() {
+    if (dirty || !kept) { kept = scan(); dirty = false; }
+    var out = [];
+    for (var i = 0; i < kept.length; i++) {
+      var el = kept[i];
+      if (!el.isConnected) { dirty = true; continue; }
       var r = el.getBoundingClientRect();
       if (visible(el, r)) out.push({ el: el, r: r });
-    });
+    }
     return out;
   }
 

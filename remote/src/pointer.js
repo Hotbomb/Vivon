@@ -6,6 +6,7 @@
 // Buttons wait for the moves before them, so a click lands where the pointer is. Without a socket
 // (it cannot open), the same messages go one request at a time over plain HTTP.
 import { api } from './api.js';
+import * as chan from './channel.js';
 
 const acc = { dx: 0, dy: 0, scroll: 0, hscroll: 0 };
 const queue = [];   // buttons and show/hide, in order
@@ -13,28 +14,11 @@ let onError = null;
 let lastError = 0;
 let frame = 0;
 let busy = false;
-let ws = null;
-let wsDown = 0;     // when the socket last failed: plain HTTP for a while after
 
-export const setPointerErrorHandler = (fn) => { onError = fn; };
+export const setPointerErrorHandler = (fn) => { onError = fn; chan.setChannelErrorHandler((e) => fail(e.message)); };
 const fail = (msg) => { if (onError && Date.now() - lastError > 4000) { lastError = Date.now(); onError(new Error(msg)); } };
 
-function socket() {
-  if (ws && ws.readyState <= 1) return ws;
-  if (Date.now() - wsDown < 15000 || typeof WebSocket === 'undefined') return null;
-  try {
-    const token = (window.couchTv && window.couchTv.token && window.couchTv.token()) || '';
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const s = new WebSocket(`${proto}//${location.host}/api/ws?pad=1${token ? `&token=${encodeURIComponent(token)}` : ''}`);
-    ws = s;
-    s.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.ok === false) fail(m.error || 'The TV pointer did not work.'); } catch (x) { /* */ } };
-    // Only this socket's own end counts (an older one closing must not drop a newer one); whatever
-    // waited for it goes over plain HTTP instead.
-    s.onclose = () => { if (ws === s) { ws = null; wsDown = Date.now(); schedule(); } };
-    s.onopen = () => schedule();
-  } catch (e) { ws = null; wsDown = Date.now(); }
-  return ws;
-}
+function socket() { return chan.ready(); }
 
 function take() {
   const d = {};
@@ -52,13 +36,11 @@ function take() {
 
 function send() {
   frame = 0;
-  const s = socket();
-  if (s && s.readyState === 1) {
+  if (chan.ready()) {
     let d;
-    while ((d = take())) s.send(JSON.stringify({ pointer: d, quiet: true }));
+    while ((d = take())) chan.send({ pointer: d, quiet: true });
     return;
   }
-  if (s && s.readyState === 0) return;   // opening: onopen sends what has added up
   // no socket: one request at a time
   if (busy) return;
   const d = take();

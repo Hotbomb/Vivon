@@ -25,7 +25,8 @@ object Tv {
         val code = Keys.resolve(name) ?: throw ApiError(400, "unknown key: $name")
         // A browser in front: the arrows glide the pointer and OK clicks, as on a TV browser, so any
         // website works with the remote's arrows. (raw: the Keyboard's own arrows still move the caret.)
-        if (!raw && browserPointer()) when (code) {
+        // (only the arrows and OK ask which app is in front; volume, Back and the rest go straight on)
+        if (!raw && code in POINTER_KEYS && browserPointer()) when (code) {
             KeyEvent.KEYCODE_DPAD_UP -> { Cursor.nudge(0, -1); return "POINTER_UP" }
             KeyEvent.KEYCODE_DPAD_DOWN -> { Cursor.nudge(0, 1); return "POINTER_DOWN" }
             KeyEvent.KEYCODE_DPAD_LEFT -> { Cursor.nudge(-1, 0); return "POINTER_LEFT" }
@@ -189,10 +190,10 @@ object Tv {
 
     @Volatile private var frontAt = 0L
     @Volatile private var frontNow: String? = null
-    /** The app in front, looked up at most every 2.5 seconds (each look is a root command). */
+    /** The app in front, looked up at most every 0.4 seconds. */
     fun frontCached(): String? {
         val n = System.currentTimeMillis()
-        if (n - frontAt > 2500) { frontNow = frontPackage(); frontAt = n }
+        if (n - frontAt > 400) { frontNow = frontPackage(); frontAt = n }
         return frontNow
     }
 
@@ -201,7 +202,38 @@ object Tv {
         Store.str("browser_dpad", "pointer") == "pointer" && Dex.tvDisplay() != null && frontCached() in BROWSERS && Cursor.available()
 
     /** The app in front on the TV, from the activity manager (root). Null when unknown. */
-    fun frontPackage(): String? {
+    private val POINTER_KEYS = setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER)
+
+    /**
+     * The app in front: from Android's usage records (the last app to come to the front), which takes
+     * a millisecond, unlike asking the activity manager through root (a few hundred, on every key).
+     * Couch Phone is allowed to read them with root (App.rootSetup). The root way is the fallback.
+     */
+    fun frontPackage(): String? = frontFromUsage() ?: frontFromDump()
+
+    @Volatile private var usageFrom = 0L
+    @Volatile private var usageLast: String? = null
+    private fun frontFromUsage(): String? = runCatching {
+        val um = ctx.getSystemService(android.app.usage.UsageStatsManager::class.java) ?: return null
+        val now = System.currentTimeMillis()
+        // only what happened since the last look (the first look goes back an hour)
+        val from = if (usageFrom == 0L) now - 3_600_000 else usageFrom - 2000
+        val ev = um.queryEvents(from, now)
+        val e = android.app.usage.UsageEvents.Event()
+        var last = usageLast
+        var any = false
+        while (ev.hasNextEvent()) {
+            ev.getNextEvent(e); any = true
+            if (e.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) last = e.packageName
+        }
+        // no events at all on a first look: the permission is probably missing
+        if (usageFrom == 0L && !any) return null
+        usageFrom = now; usageLast = last
+        last
+    }.getOrNull()
+
+    private fun frontFromDump(): String? {
         if (Root.available != true) return null
         val out = Root.shOrNull("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -5", 6000) ?: return null
         return Regex("ActivityRecord\\{\\S+ u0 ([^/\\s]+)/").find(out)?.groupValues?.get(1)

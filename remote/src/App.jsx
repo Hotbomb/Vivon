@@ -11,6 +11,7 @@ import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, B
 import { ConnectSheet } from './Connect.jsx';
 import { ControllerScreen } from './Controller.jsx';
 import { inApp } from './appBridge.js';
+import * as chan from './channel.js';
 import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
@@ -365,6 +366,8 @@ export default function App() {
   );
 
   const tvKind = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind;
+  // Couch Phone: the keys' socket opens now, so the first press goes straight out
+  useEffect(() => { if (tvKind === 'dex') chan.warm(); }, [tvKind]);
   const remote = (
     <div className="remote-col">
       <div className="pull-zone" {...pull}>

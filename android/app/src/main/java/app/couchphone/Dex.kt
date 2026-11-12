@@ -32,7 +32,16 @@ object Dex {
     private fun typeOf(d: Display): Int = runCatching { Display::class.java.getMethod("getType").invoke(d) as Int }.getOrDefault(-1)
 
     /** The TV's display id, or null when DeX is not on a TV right now. */
+    // Asked on every key, pointer move and launch: kept for a second (a display coming or going clears it).
+    @Volatile private var tvAt = 0L
+    @Volatile private var tvCached: Int? = null
     fun tvDisplay(): Int? {
+        val n = android.os.SystemClock.uptimeMillis()
+        if (n - tvAt < 1000) return tvCached
+        return findTv().also { tvCached = it; tvAt = n }
+    }
+
+    private fun findTv(): Int? {
         val all = dm.displays.filter { it.displayId != Display.DEFAULT_DISPLAY && it.flags and Display.FLAG_PRIVATE == 0 }
         if (homeDisplay > 0 && all.any { it.displayId == homeDisplay }) return homeDisplay
         val pick = all.firstOrNull { typeOf(it) == 2 } ?: all.firstOrNull { typeOf(it) == 3 }
@@ -53,8 +62,41 @@ object Dex {
         val d = target()
         val comp = ComponentName(ctx, HomeActivity::class.java)
         // Couch Phone's own windows still on the phone's screen would pull the home there: off to the TV.
-        if (d != Display.DEFAULT_DISPLAY) { SetupActivity.closeOnPhone(); if (Root.available == true) moveToTv(ctx.packageName, d) }
+        if (d != Display.DEFAULT_DISPLAY) SetupActivity.closeOnPhone()
+        if (fastStart(Intent().setComponent(comp), d, full = true)) {
+            // a Couch Phone window left on the phone's screen would hold the home there: checked after
+            if (d != Display.DEFAULT_DISPLAY && Root.available == true) Thread { Thread.sleep(600); moveToTv(ctx.packageName, d) }.start()
+            return
+        }
+        if (d != Display.DEFAULT_DISPLAY && Root.available == true) moveToTv(ctx.packageName, d)
         if (!rootStart(comp, d)) plainStart(Intent().setComponent(comp), d)
+    }
+
+    // ---------------------------------------------------------------- starting fast
+    //
+    // `am start` through root is a new Java process each time (a few hundred ms, then more to check
+    // where the app went). Couch Phone starts apps itself instead: on the TV's display and maximised
+    // (ActivityOptions' hidden windowing mode), allowed from the background because it may draw over
+    // other apps. The root way stays as the fallback.
+
+    private val windowingMode: java.lang.reflect.Method? by lazy {
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= 28) org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/app/ActivityOptions;")
+            ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+        }.onFailure { Log.w(TAG, "no launch windowing mode", it) }.getOrNull()
+    }
+
+    /** Starts an activity itself on the display, maximised when asked. False if it could not (then use root). */
+    private fun fastStart(i: Intent, display: Int, full: Boolean): Boolean {
+        // without "display over other apps", Android drops background starts without a word
+        if (!android.provider.Settings.canDrawOverlays(ctx)) return false
+        return runCatching {
+            val opts = ActivityOptions.makeBasic().setLaunchDisplayId(display)
+            if (full) (windowingMode ?: return false).invoke(opts, 1)   // WINDOWING_MODE_FULLSCREEN
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            ctx.startActivity(i, opts.toBundle())
+            true
+        }.onFailure { Log.w(TAG, "fast start", it) }.getOrDefault(false)
     }
 
     /**
@@ -68,33 +110,25 @@ object Dex {
         val i = pm.getLaunchIntentForPackage(pkg) ?: pm.getLeanbackLaunchIntentForPackage(pkg) ?: return false
         val d = target()
         val comp = i.component
-        val onTv = d != Display.DEFAULT_DISPLAY && Root.available == true
-        // Only an app that is already open somewhere needs moving and checking; a new one opens on the TV.
-        val before = if (onTv) tasksOf(pkg) else emptyList()
-        if (before.any { it.second != d }) moveToTv(pkg, d, before)
-        if (comp != null && rootStart(comp, d)) {
-            if (before.isNotEmpty()) {
-                Thread.sleep(700)
-                var now = tasksOf(pkg)
-                if (now.any { it.second != d }) {
-                    // Still on the phone: close it there (like swiping it away in Recents) and open it again on the TV.
-                    now.filter { it.second != d }.forEach { Root.shOrNull("am stack remove ${it.first} 2>&1") }
-                    rootStart(comp, d); Thread.sleep(700); now = tasksOf(pkg)
-                }
-                if (now.isNotEmpty() && now.none { it.second == d })
-                    throw ApiError(409, "${Tv.label(pkg)} opened on the phone's own screen: Samsung DeX will not show it on the TV. " +
-                        "Try Samsung DeX settings, Labs, \"Run any app in Samsung DeX\" or \"Force apps to resize\".")
-            } else if (onTv) {
-                // A fresh start: checked once in the background, so the remote is not kept waiting.
-                Thread {
-                    Thread.sleep(1500)
-                    val t = tasksOf(pkg)
-                    if (t.isNotEmpty() && t.none { it.second == d }) moveToTv(pkg, d, t)
-                }.start()
+        val full = Store.bool("apps_full_screen", true)
+        // Started at once; where it went is checked after, in the background, so the remote never waits.
+        val started = fastStart(Intent(i), d, full) || (comp != null && rootStart(comp, d))
+        if (!started) { plainStart(i, d); return true }
+        if (d != Display.DEFAULT_DISPLAY && Root.available == true) Thread {
+            Thread.sleep(700)
+            var t = tasksOf(pkg)
+            if (t.isEmpty() || t.any { it.second == d }) return@Thread
+            // It came back on the phone's screen (Android reopens an app where it was): to the TV.
+            moveToTv(pkg, d, t)
+            Thread.sleep(500); t = tasksOf(pkg)
+            if (t.isNotEmpty() && t.none { it.second == d }) {
+                // still there: close it there (like swiping it away in Recents) and open it on the TV
+                t.forEach { Root.shOrNull("am stack remove ${it.first} 2>&1") }
+                if (!fastStart(Intent(i), d, full) && comp != null) rootStart(comp, d)
+                Thread.sleep(800)
+                if (tasksOf(pkg).let { x -> x.isNotEmpty() && x.none { it.second == d } }) Log.w(TAG, "$pkg stays on the phone's screen: DeX will not show it on the TV")
             }
-            return true
-        }
-        plainStart(i, d)
+        }.start()
         return true
     }
 
@@ -132,6 +166,11 @@ object Dex {
     /** Opens a web address on the TV, in `browser` if given (its window moved to the TV first). */
     fun openUrl(url: String, browser: String?) {
         val d = target()
+        val fast = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { if (browser != null) setPackage(browser) }
+        if (fastStart(fast, d, Store.bool("apps_full_screen", true))) {
+            if (browser != null && d != Display.DEFAULT_DISPLAY && Root.available == true) Thread { Thread.sleep(700); moveToTv(browser, d) }.start()
+            return
+        }
         if (Root.available == true) {
             if (browser != null && d != Display.DEFAULT_DISPLAY) moveToTv(browser, d)
             val q = "'" + url.replace("'", "'\\''") + "'"
@@ -147,6 +186,7 @@ object Dex {
     fun openInCouch(url: String) {
         val d = target()
         val comp = ComponentName(ctx, BrowserActivity::class.java)
+        if (fastStart(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).setComponent(comp), d, full = true)) return
         if (Root.available == true) {
             val q = "'" + url.replace("'", "'\\''") + "'"
             val out = Root.shOrNull("am start --display $d --windowingMode 1 -f 0x10000000 -n '${comp.flattenToShortString()}' " +
@@ -229,6 +269,7 @@ object Dex {
 
     private val listener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(id: Int) {
+            tvAt = 0L
             Log.i(TAG, "display added: $id")
             homeDisplay = -1
             SetupActivity.closeOnPhone()
@@ -236,7 +277,7 @@ object Dex {
             // Give DeX a few seconds to finish starting its desktop, then put the home on top.
             main.postDelayed({ if (Store.bool("open_on_dex", true) && tvDisplay() == id) Thread { openHome() }.start() }, 4000)
         }
-        override fun onDisplayRemoved(id: Int) { if (homeDisplay == id) homeDisplay = -1 }
+        override fun onDisplayRemoved(id: Int) { tvAt = 0L; if (homeDisplay == id) homeDisplay = -1 }
         override fun onDisplayChanged(id: Int) {}
     }
 

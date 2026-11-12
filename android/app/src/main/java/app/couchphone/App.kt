@@ -160,6 +160,8 @@ class BridgeService : Service() {
         val p = packageName
         // MediaWatch: to see (and pause) the browser's player only, never other apps' music
         Root.shOrNull("cmd notification allow_listener $p/$p.MediaWatch 2>&1")
+        // the app in front, from Android's usage records (Tv.frontPackage): fast, no root per key
+        Root.shOrNull("appops set $p GET_USAGE_STATS allow 2>&1")
         Root.shOrNull("appops set $p SYSTEM_ALERT_WINDOW allow; dumpsys deviceidle whitelist +$p; " +
             "cmd appops set $p RUN_ANY_IN_BACKGROUND allow; cmd appops set $p RUN_IN_BACKGROUND allow")
         RootInput.warmUp()

@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <!-- granted with root at start, so the app may open the home and apps on the TV from the background -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- the app in front, from usage records (allowed with root), instead of a root command per key -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- the TV home's Bluetooth panel (granted with root at start, so no pop-ups) -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />

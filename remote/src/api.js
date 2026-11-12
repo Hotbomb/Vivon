@@ -1,3 +1,5 @@
+import * as chan from './channel.js';
+
 // Thin client for the bridge (../../bridge/API.md). Relative URLs, so it works from any phone at home.
 
 export class ApiError extends Error {
@@ -97,7 +99,10 @@ export const api = {
   screens: () => call('GET', '/api/screens'),
   sleep: () => call('GET', '/api/sleep'),
   // raw: an arrow from the Keyboard moves the caret even in a browser (not the TV's pointer)
-  key: (key, hold = false, raw = false) => call('POST', '/api/key', { key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) }),
+  // Couch Phone: over the open socket (channel.js) at once and in order; HTTP when there is none.
+  key: (key, hold = false, raw = false) => (chan.send({ key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) })
+    ? Promise.resolve({ ok: true, key })
+    : call('POST', '/api/key', { key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) })),
   text: (text) => call('POST', '/api/text', { text }),
   launch: (app) => call('POST', '/api/launch', { app }),
   pointer: (d) => call('POST', '/api/pointer', d, 5000),

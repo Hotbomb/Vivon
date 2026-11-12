@@ -23,7 +23,13 @@ import java.util.concurrent.TimeUnit
 class Server(private val ctx: Context, port: Int, private val secure: Boolean = false) : NanoWSD(port) {
     private val assets = ctx.assets
 
-    override fun useGzipWhenAccepted(r: Response) = false   // gzip would hold back server-sent events
+    // Text files are sent compressed (the remote's script is a third of its size gzipped); never the
+    // server-sent events, which gzip would hold back, nor pictures, which are compressed already.
+    override fun useGzipWhenAccepted(r: Response): Boolean {
+        val m = r.mimeType ?: return false
+        return !m.startsWith("text/event-stream") && (m.startsWith("text/") || m.startsWith("application/javascript") ||
+            m.startsWith("application/json") || m.startsWith("image/svg") || m.startsWith("application/manifest"))
+    }
 
     override fun serve(session: IHTTPSession): Response {
         // Local Wi-Fi only: anything else (mobile data, VPNs, other networks) gets nothing.
@@ -445,7 +451,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             val reply = try {
                 val m = JSONObject(frame.textPayload)
                 when {
-                    m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold")); JSONObject().put("ok", true).put("key", m.getString("key")) }
+                    // keys from the remote's open socket: no answer unless something went wrong (then the catch below)
+                    m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold"), m.optBoolean("raw")); return }
                     m.has("volume") -> { volume(JSONObject().put("action", m.getString("volume"))); JSONObject().put("ok", true) }
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
                     // The air mouse sends many small moves: no answer for those, to keep the socket quiet.
@@ -497,7 +504,12 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
 
     private fun asset(path: String): Response = try {
         val stream = assets.open(path)
-        newChunkedResponse(Response.Status.OK, mime(path), stream).noCache()
+        val r = newChunkedResponse(Response.Status.OK, mime(path), stream)
+        // The remote's built files carry their content's hash in the name (index-C01TOrwX.js): a phone
+        // keeps them for good and opens the remote at once next time. Everything else is asked again.
+        if (Regex("/assets/[^/]+-[A-Za-z0-9_-]{8,}\\.(js|css|woff2|png|svg|webp)$").containsMatchIn(path))
+            r.apply { addHeader("Cache-Control", "public, max-age=31536000, immutable") }
+        else r.noCache()
     } catch (e: IOException) { newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found") }
 
     private fun mime(p: String) = when (p.substringAfterLast('.').lowercase()) {
