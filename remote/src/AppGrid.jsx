@@ -19,12 +19,16 @@ function Icon({ app, logo, AppIcon }) {
   return <span className="app-icon own"><img src={src} alt="" loading="lazy" onError={() => setBroken(true)} /></span>;
 }
 
-export function AppGrid({ apps, tvHidden, logoFor, AppIcon, short, onLaunch }) {
+export function AppGrid({ apps, tvHidden, logoFor, AppIcon, short, onLaunch, onAppsChanged, sites = false }) {
   const [layout, setLayout] = useState(null);   // { order, hidden, saved }
   const [editing, setEditing] = useState(false);
   const [drag, setDrag] = useState(null);       // the package being dragged
   const grid = useRef(null);
   const hold = useRef(null);
+  const [siteUrl, setSiteUrl] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [siteMsg, setSiteMsg] = useState('');
+  const [siteBusy, setSiteBusy] = useState(false);
 
   useEffect(() => { api.remoteApps().then(setLayout).catch(() => setLayout({ order: [], hidden: [], saved: false })); }, []);
 
@@ -106,6 +110,36 @@ export function AppGrid({ apps, tvHidden, logoFor, AppIcon, short, onLaunch }) {
       </div>
       {editing && (
         <>
+          {sites && (
+            <div className="sites-edit">
+              <h3 className="add-head">{t('sites_title')}</h3>
+              <p className="empty">{t('sites_lede')}</p>
+              <ul className="arrange">
+                {all.filter((a) => a.kind === 'site').map((a) => (
+                  <li key={keyOf(a)} className="arrange-row glass site-row">
+                    <b><span className="cn-name">{a.name}</span><small>{(a.url || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}</small></b>
+                    <button type="button" className="pill glass small" disabled={siteBusy} onClick={() => {
+                      tick(); setSiteBusy(true);
+                      api.removeSite(keyOf(a)).then(() => { setSiteMsg(t('site_removed', { name: a.name })); onAppsChanged?.(); }, (e) => setSiteMsg(e.message)).finally(() => setSiteBusy(false));
+                    }}>{t('site_delete')}</button>
+                  </li>
+                ))}
+              </ul>
+              <form className="site-form" onSubmit={(e) => {
+                e.preventDefault(); if (!siteUrl.trim()) return;
+                tick(); setSiteBusy(true); setSiteMsg('');
+                api.addSite(siteName.trim(), siteUrl.trim()).then((r) => {
+                  setSiteUrl(''); setSiteName(''); setSiteMsg(t('site_added', { name: r.site?.name || '' })); onAppsChanged?.();
+                }, (err) => setSiteMsg(err.message)).finally(() => setSiteBusy(false));
+              }}>
+                <input className="glass" value={siteUrl} onChange={(e) => setSiteUrl(e.target.value)} placeholder={t('site_url')} aria-label={t('site_url')}
+                  inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="next" />
+                <input className="glass" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder={t('site_name')} aria-label={t('site_name')} maxLength={40} enterKeyHint="done" />
+                <button type="submit" className="pill solid" disabled={siteBusy || !siteUrl.trim()}><Ic.Plus size={18} /> {t('site_add')}</button>
+              </form>
+              {siteMsg && <p className="empty" role="status">{siteMsg}</p>}
+            </div>
+          )}
           <h3 className="add-head">{off.length ? t('apps_add') : t('apps_all_shown')}</h3>
           <div className="apps add">
             {off.map((p) => {

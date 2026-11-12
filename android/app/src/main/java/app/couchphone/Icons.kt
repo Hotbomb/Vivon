@@ -30,6 +30,11 @@ object Icons {
 
     fun response(raw: String): NanoHTTPD.Response {
         val pkg = raw.removeSuffix(".png")
+        if (pkg.startsWith(Sites.PREFIX)) {
+            val b = Sites.icon(pkg) ?: return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "no icon yet")
+            return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "image/png", ByteArrayInputStream(b), b.size.toLong())
+                .apply { addHeader("Cache-Control", "private, max-age=3600") }
+        }
         val bytes = (if (Regex("[A-Za-z0-9_.]{1,200}").matches(pkg)) png(pkg) else null)
             ?: return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "no icon")
         return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "image/png", ByteArrayInputStream(bytes), bytes.size.toLong())

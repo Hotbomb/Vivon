@@ -70,6 +70,12 @@ class HomeActivity : Activity() {
                     if (u.host != "tvos.invalid") return null
                     val pkg = u.lastPathSegment ?: return null
                     val isIcon = u.pathSegments.firstOrNull() == "icon"
+                    // a website tile: its own icon, for both
+                    if (pkg.startsWith(Sites.PREFIX)) {
+                        val png = Sites.icon(pkg)
+                        if (isIcon) return png?.let { WebResourceResponse("image/png", null, ByteArrayInputStream(it)) }
+                        return WebResourceResponse("image/jpeg", null, ByteArrayInputStream(siteBanner(png, Sites.find(pkg)?.name ?: "")))
+                    }
                     val img = (if (isIcon) iconImage(pkg) else bannerImage(pkg)) ?: return null
                     return WebResourceResponse(if (isIcon) "image/png" else "image/jpeg", null, ByteArrayInputStream(img))
                 }
@@ -133,9 +139,12 @@ class HomeActivity : Activity() {
                 out.put(JSONObject().put("package", ai.packageName).put("label", ri.loadLabel(packageManager).toString())
                     .put("hasBanner", ai.banner != 0 || ai.applicationInfo.banner != 0))
             }
+            // website tiles (Sites.kt), as apps
+            Sites.list().forEach { out.put(JSONObject().put("package", it.id).put("label", it.name).put("hasBanner", false)) }
             return out.toString()
         }
         @JavascriptInterface fun launch(pkg: String): Boolean {
+            if (pkg.startsWith(Sites.PREFIX)) { Thread { runCatching { Sites.open(pkg) } }.start(); return Sites.find(pkg) != null }
             if (packageManager.getLaunchIntentForPackage(pkg) == null && packageManager.getLeanbackLaunchIntentForPackage(pkg) == null) return false
             Thread { runCatching { Dex.launchPackage(pkg) } }.start()
             return true
@@ -168,6 +177,24 @@ class HomeActivity : Activity() {
         val bytes = ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it); bmp.recycle() }.toByteArray()
         banners[pkg] = bytes
         return bytes
+    }
+
+    /** A website tile's banner: its icon on a tile, as apps without a banner get. */
+    private fun siteBanner(png: ByteArray?, name: String): ByteArray {
+        val bmp = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawColor(FLAP)
+        val icon = png?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+        if (icon != null) iconTile(android.graphics.drawable.BitmapDrawable(resources, icon), c)
+        else {
+            // no icon: the site's name, big
+            val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE; textSize = 64f; textAlign = android.graphics.Paint.Align.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            }
+            c.drawText(name.take(18), 320f, 180f - (p.ascent() + p.descent()) / 2, p)
+        }
+        return ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it); bmp.recycle() }.toByteArray()
     }
 
     private fun iconTile(icon: Drawable, c: Canvas) {

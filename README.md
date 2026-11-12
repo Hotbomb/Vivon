@@ -91,6 +91,10 @@ A B X Y, bumpers, triggers, View, Home and Menu. The TV phone sees a real Xbox-s
 so Steam Link and controller games (Terraria and the like) work with it. Each phone that opens it
 is the next player, up to 4.
 
+**Website tiles:** remote, Watch, Edit, Websites: type an address (like cinejoy.pk) and the site
+becomes a tile with its own icon, on the Watch page and the TV home. It opens in Brave on the TV
+(with Brave's ad blocking), or the usual browser without Brave. Delete it from the same place.
+
 **Updating Couch Phone:** the TV's "Connect a remote" screen (and the remote's TV sheet) shows
 when a newer release is out on GitHub. OK (or Update) downloads it and installs it with root;
 Couch Phone starts again by itself.

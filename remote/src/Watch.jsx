@@ -39,7 +39,7 @@ function Poster({ show, sub, onPlay, dim }) {
   );
 }
 
-export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, screens, serviceName, onPlay, onLaunch, onScreen, wide, ideas = true }) {
+export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, screens, serviceName, onPlay, onLaunch, onScreen, wide, ideas = true, onAppsChanged }) {
   const cont = contIn || [];
   const picks = (recs?.picks || []).filter((s) => s.playable !== false);
   const ready = (screens || []).filter((s) => s.ready);
@@ -59,7 +59,7 @@ export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, scr
         ) : <p className="empty">{contIn === false ? t('couldnt_load') : contIn ? t('shows_wait') : t('loading')}</p>}
       </section>
 
-      <AppGrid apps={apps} tvHidden={hidden} logoFor={logoFor} AppIcon={AppIcon} short={SHORT} onLaunch={onLaunch} />
+      <AppGrid apps={apps} tvHidden={hidden} logoFor={logoFor} AppIcon={AppIcon} short={SHORT} onLaunch={onLaunch} onAppsChanged={onAppsChanged} sites={!ideas} />
 
       {ideas && (
       <section>

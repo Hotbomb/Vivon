@@ -679,3 +679,16 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .apps.add .app-tile { opacity: 0.85; }
 .app-icon.own { background: transparent; }
 .app-icon.own img { filter: none; object-fit: contain; }
+
+/* Couch Phone: website tiles, in the Watch page's edit mode */
+.sites-edit { padding: 0 var(--side); }
+.sites-edit .add-head { margin-left: 0; }
+.sites-edit .empty { padding-left: 0; padding-right: 0; }
+.site-row { height: auto; min-height: 58px; padding: 8px 8px 8px 14px; margin-bottom: 6px; }
+.site-row b { display: flex; flex-direction: column; gap: 2px; }
+.site-row b small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.site-row .pill.small { flex: none; height: 36px; padding: 0 14px; font-size: 14px; }
+.site-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.site-form input { height: 48px; border-radius: 16px; padding: 0 16px; border: 0; font: inherit; font-size: 16px; color: var(--ink); background: rgba(255, 255, 255, 0.1); }
+.site-form .pill { display: flex; align-items: center; justify-content: center; gap: 8px; flex: none; }
+.sites-edit h3.add-head { padding-left: 0; padding-right: 0; }

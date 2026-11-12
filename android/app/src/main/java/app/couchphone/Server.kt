@@ -147,6 +147,16 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
             "GET /api/connect" -> json(200, connectInfo())
+            // Website tiles: {"action":"add","name":"Cinejoy","url":"cinejoy.pk"} or {"action":"remove","id":"site:cinejoy"}
+            "GET /api/sites" -> json(200, ok().put("sites", JSONArray(Sites.list().map { it.json().put("id", it.id) })))
+            "POST /api/sites" -> {
+                val b = body(s)
+                when (b.optString("action")) {
+                    "add" -> { val site = Sites.add(b.optString("name"), b.optString("url")); refreshHomeAfter(s); json(200, ok().put("site", site.json().put("id", site.id))) }
+                    "remove" -> { Sites.remove(b.optString("id")); refreshHomeAfter(s); json(200, ok()) }
+                    else -> throw ApiError(400, "action must be add or remove")
+                }
+            }
             // Updating Couch Phone itself from the newest release on GitHub (Updater.kt).
             "GET /api/update" -> json(200, ok(Updater.summary()))
             "POST /api/update" -> json(200, ok(Updater.start()))
@@ -230,6 +240,9 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             .sortedBy { it.second.lowercase() }
             .forEach { (pkg, name) -> arr.put(JSONObject().put("id", pkg).put("name", name).put("package", pkg).put("colour", "#2A2A30").put("installed", true)
                 .put("icon", "/api/app-icon/$pkg")) }
+        // website tiles (Sites.kt), listed like apps
+        Sites.list().forEach { site -> arr.put(JSONObject().put("id", site.id).put("name", site.name).put("package", site.id).put("colour", "#2A2A30")
+            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url)) }
         return arr
     }
 
@@ -241,6 +254,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             return json(200, ok().put("app", Now.describe(BuildConfig.APPLICATION_ID)))
         }
         if (target == "settings") return launch("com.android.settings")
+        // a website tile: the site in Brave on the TV
+        if (target.startsWith(Sites.PREFIX)) { Tv.pauseBrowser(); Sites.open(target); return json(200, ok()) }
         // Android's own Bluetooth and Wi-Fi screens (the TV home's fallback for anything its panels cannot do)
         val screen = mapOf("bluetooth" to "android.settings.BLUETOOTH_SETTINGS", "network" to "android.settings.WIFI_SETTINGS",
             "wifi" to "android.settings.WIFI_SETTINGS")[target]
