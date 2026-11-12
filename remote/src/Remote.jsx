@@ -1,4 +1,5 @@
 import { makePadSender } from './padSender.js';
+import { padGain } from './pointer.js';
 import { useEffect, useRef, useState } from 'react';
 import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
@@ -195,7 +196,7 @@ function usePointerPad(onPointer) {
   return add.current;
 }
 
-export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLivingRoom, onPointer }) {
+export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLivingRoom, onPointer, onMode }) {
   const [pointerOn, setPointerOn] = useState(() => { try { return localStorage.getItem('tv.pointer') === '1'; } catch (e) { return false; } });
   const togglePointer = () => { const v = !pointerOn; setPointerOn(v); try { localStorage.setItem('tv.pointer', v ? '1' : '0'); } catch (e) { /* */ } };
   const addPointer = usePointerPad(onPointer || (() => {}));
@@ -203,6 +204,8 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   const spotFrame = useRef(0);
   const pg = useRef(null);
   const usePointerMode = Boolean(onPointer) && pointerOn;
+  // the page below changes with it: the pointer's buttons instead of Back, Home, play and volume
+  useEffect(() => { onMode?.(usePointerMode && !offState); }, [usePointerMode, offState]); // eslint-disable-line react-hooks/exhaustive-deps
   const ref = useRef(null);
   const g = useRef(null);
   const [lit, setLit] = useState(null);
@@ -240,7 +243,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     } else {
       // faster swipes go further (pointer acceleration), so the TV's whole screen is one easy swipe away
       const now = performance.now(); const dt = Math.max(1, now - (s.lt || now - 16)); s.lt = now;
-      const g = GAIN * (1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9));
+      const g = GAIN * padGain() * (1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9));
       addPointer('dx', dx * g); addPointer('dy', dy * g);
     }
   };
@@ -384,19 +387,23 @@ function useRepeat(fn) {
 }
 
 // The bottom row, in thumb reach: back, home, play or pause, volume. Like Apple's TV Remote.
-export function Controls({ tv, onKey, onVolume }) {
+// lead: other buttons in place of Back, Home and play (the trackpad's pointer mode puts Keyboard
+// and Speak there); the volume stays.
+export function Controls({ tv, onKey, onVolume, lead }) {
   const v = tv?.volume;
   const st = tv?.playing?.state;
   const upR = useRepeat(() => onVolume('up'));
   const downR = useRepeat(() => onVolume('down'));
   return (
     <div className="controls">
+      {lead || (<>
       <button className="round big glass" aria-label={t('back')} onClick={() => { tick(); onKey('back'); }}><Ic.Back /></button>
       <button className="round big glass" aria-label={t('home')} onClick={() => { tick(); onKey('home'); }}><Ic.Home /></button>
       <button className="round big glass" aria-label={st === 'playing' ? t('pause') : st === 'paused' ? t('play') : t('play_pause')}
         onClick={() => { tick(); onKey('play_pause'); }}>
         {st === 'playing' ? <Ic.Pause /> : st === 'paused' ? <Ic.Play /> : <Ic.PlayPause />}
       </button>
+      </>)}
       <div className="volume glass" role="group" aria-label={t('volume')}>
         <button aria-label="Volume down" {...downR}><Ic.Minus /></button>
         <button className="vol-mid" aria-label={v?.muted ? 'Unmute' : 'Mute'} onClick={() => { tick(); onVolume('mute'); }}>

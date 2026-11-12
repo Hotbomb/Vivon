@@ -381,6 +381,14 @@ class MainActivity : Activity() {
         @JavascriptInterface fun startSpeech(lang: String) { main.post { this@MainActivity.startSpeech(lang) } }
         @JavascriptInterface fun stopSpeech() { main.post { speech?.stopListening() } }
         @JavascriptInterface fun cancelSpeech() { main.post { speech?.cancel() } }
+        /** The phone's own keyboard, for the remote's text box (a text box was picked on the TV). */
+        @JavascriptInterface fun showKeyboard() {
+            main.postDelayed({
+                val w = web ?: return@postDelayed
+                w.requestFocus()
+                getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(w, 0)
+            }, 120)
+        }
         @JavascriptInterface fun disconnect() { main.post { prefs.edit().remove("base").apply(); showConnect(null) } }
     }
 

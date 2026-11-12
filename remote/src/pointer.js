@@ -15,6 +15,14 @@ let lastError = 0;
 let frame = 0;
 let busy = false;
 
+// The trackpad's speed, 1 to 5 (3 is normal), kept on this phone.
+const SPEEDS = [0.55, 0.75, 1, 1.35, 1.8];
+let padSpeed = 3;
+try { padSpeed = Math.min(5, Math.max(1, Number(localStorage.getItem('tv.pad.speed')) || 3)); } catch (e) { /* */ }
+export const getPadSpeed = () => padSpeed;
+export const padGain = () => SPEEDS[padSpeed - 1];
+export const setPadSpeed = (n) => { padSpeed = Math.min(5, Math.max(1, n)); try { localStorage.setItem('tv.pad.speed', String(padSpeed)); } catch (e) { /* */ } };
+
 export const setPointerErrorHandler = (fn) => { onError = fn; chan.setChannelErrorHandler((e) => fail(e.message)); };
 const fail = (msg) => { if (onError && Date.now() - lastError > 4000) { lastError = Date.now(); onError(new Error(msg)); } };
 

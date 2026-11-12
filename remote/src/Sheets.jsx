@@ -5,7 +5,7 @@ import { tick } from './haptics.js';
 import { api } from './api.js';
 import { logoFor } from './appLogos.js';
 import { t, LANGS, choice, setChoice, locale } from './i18n.js';
-import { TvScreenSection } from './TvScreen.jsx';
+import { TvScreenSection, PadSpeedSection } from './TvScreen.jsx';
 import { OpenLink } from './OpenLink.jsx';
 import { UpdateSection } from './Update.jsx';
 
@@ -482,6 +482,7 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         <p className="note">{sleepError || (endsAt ? t('turns_off_at', { time: endsAt.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }), n: left }) : t('sleep_note'))}</p>
       </section>
 
+      {dex && <PadSpeedSection />}
       {dex && <TvScreenSection open={open} />}
 
       {!dex && <section className="more-block">

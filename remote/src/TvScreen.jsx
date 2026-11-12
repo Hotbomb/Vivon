@@ -5,6 +5,24 @@ import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
+import { getPadSpeed, setPadSpeed } from './pointer.js';
+
+// The trackpad's speed, 1 to 5 (kept on this phone; the TV also scales it to its screen size).
+export function PadSpeedSection() {
+  const [n, setN] = useState(getPadSpeed());
+  return (
+    <section className="more-block">
+      <h3><Ic.Cursor size={16} /> {t('pad_speed')}</h3>
+      <div className="chips-row" role="radiogroup" aria-label={t('pad_speed')}>
+        {[1, 2, 3, 4, 5].map((v) => (
+          <button key={v} role="radio" aria-checked={n === v} className={`chip glass ${n === v ? 'on' : ''}`}
+            onClick={() => { tick(); setPadSpeed(v); setN(v); }}>{v}</button>
+        ))}
+      </div>
+      <p className="note">{t('pad_speed_note')}</p>
+    </section>
+  );
+}
 
 export function TvScreenSection({ open }) {
   const [info, setInfo] = useState(null);

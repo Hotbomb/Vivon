@@ -7,7 +7,7 @@ import { TopBar, NowPlaying, Pad, Controls, AskButton } from './Remote.jsx';
 import { Watch } from './Watch.jsx';
 import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sheets.jsx';
 import { usePullDown, usePageDrag } from './gestures.js';
-import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink } from './Couch.jsx';
+import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink, PointerButtons } from './Couch.jsx';
 import { ConnectSheet } from './Connect.jsx';
 import { ControllerScreen } from './Controller.jsx';
 import { inApp } from './appBridge.js';
@@ -301,6 +301,24 @@ export default function App() {
   const airRef = useRef(null);
   const [secureWhy, setSecureWhy] = useState('speak');
   const openKeyboard = () => { tick(); flushSync(() => setSheet('keyboard')); kbInput.current?.focus({ preventScroll: true }); };
+  // A text box picked on the TV (a search bar): the keyboard opens by itself, and closes again when
+  // the TV leaves the box, if it was opened that way. In the Couch Remote app the phone's own
+  // keyboard comes up too (a browser only shows it after a tap).
+  const typingWas = useRef(false);
+  const kbAuto = useRef(false);
+  useEffect(() => {
+    const on = Boolean(tv?.typing);
+    if (on && !typingWas.current && !sheet && (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind === 'dex') {
+      kbAuto.current = true;
+      flushSync(() => setSheet('keyboard'));
+      kbInput.current?.focus({ preventScroll: true });
+      try { window.CouchApp?.showKeyboard?.(); } catch (e) { /* */ }
+    } else if (!on && typingWas.current && kbAuto.current && sheet === 'keyboard') {
+      kbAuto.current = false;
+      setSheet(null);
+    }
+    typingWas.current = on;
+  }, [tv?.typing]); // eslint-disable-line react-hooks/exhaustive-deps
   const openSpeak = () => {
     tick();
     if (!secure && !inApp) { setSecureWhy('speak'); setSheet('secure'); return; }
@@ -365,6 +383,7 @@ export default function App() {
     </nav>
   );
 
+  const [padIsPointer, setPadIsPointer] = useState(false);   // the trackpad drives the TV pointer
   const tvKind = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind;
   // Couch Phone: the keys' socket opens now, so the first press goes straight out
   useEffect(() => { if (tvKind === 'dex') chan.warm(); }, [tvKind]);
@@ -378,10 +397,21 @@ export default function App() {
       {tvKind !== 'dex' && <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />}
       </div>
       <Pad onPointer={tvKind === 'lg' ? (d) => api.pointer(d) : tvKind === 'dex' ? padPointer : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
-        tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} />
-      {tvKind === 'dex' && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)}
+        tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} onMode={setPadIsPointer} />
+      {tvKind === 'dex' && !padIsPointer && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)}
         onPad={() => { tick(); setSheet('pad'); }} browser={!offState && BROWSERS.includes(tv?.app?.package)} say={say} />}
-      <Controls tv={tv} onKey={onKey} onVolume={onVolume} />
+      {tvKind === 'dex' && padIsPointer ? (
+        <>
+          {/* the trackpad drives the pointer: the air mouse's buttons, then Keyboard, Speak and the volume */}
+          <PointerButtons onKey={onKey} />
+          <Controls tv={tv} onKey={onKey} onVolume={onVolume} lead={(
+            <>
+              <button className="round big glass" aria-label={t('keyboard')} onClick={openKeyboard}><Ic.Keyboard /></button>
+              <button className="round big glass" aria-label={t('speak')} onClick={openSpeak}><Ic.Mic /></button>
+            </>
+          )} />
+        </>
+      ) : <Controls tv={tv} onKey={onKey} onVolume={onVolume} />}
       {wide && askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
     </div>
   );

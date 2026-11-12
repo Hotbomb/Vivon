@@ -205,7 +205,8 @@ object Cursor {
         if (b.has("show") && !b.optBoolean("show")) { main.removeCallbacks(hide); onMain { removeView() }; return }
         if (!ensure()) throw ApiError(503, "The pointer cannot be drawn on the TV. Open Couch Phone on the phone once, and allow root in Magisk.")
         used()
-        val dx = b.optDouble("dx", 0.0).toFloat(); val dy = b.optDouble("dy", 0.0).toFloat()
+        val k = speed()
+        val dx = b.optDouble("dx", 0.0).toFloat() * k; val dy = b.optDouble("dy", 0.0).toFloat() * k
         if (dx != 0f || dy != 0f) {
             val n = now()
             val t = b.optDouble("t", Double.NaN)
@@ -228,6 +229,23 @@ object Cursor {
                 else -> then { click(display, bit) }
             }
         }
+    }
+
+    /**
+     * How far a finger's move goes on the TV: scaled to the screen's size (the remote's moves are
+     * phone-sized; a 1080p TV is half as wide again as 1280, a 1440p one twice), and a little more
+     * while a browser is in front, whose pages are big and far to cross.
+     */
+    @Volatile private var speedAt = 0L
+    @Volatile private var speedNow = 1f
+    private fun speed(): Float {
+        val n = now()
+        if (n - speedAt < 500) return speedNow
+        val screen = (w / 1280f).coerceIn(1f, 2.4f)
+        val front = runCatching { Tv.frontCached() }.getOrNull()
+        val page = if (front in Tv.BROWSERS || BrowserActivity.inFront() != null) 1.25f else 1f
+        speedNow = screen * page; speedAt = n
+        return speedNow
     }
 
     private fun click(d: Int, bit: Int) {

@@ -48,6 +48,8 @@ object Now {
         .put("mode", "on-tv")
         .put("dex", Dex.tvDisplay() != null)
         .put("root", Root.available == true)
+        // a text box is picked on the TV (TypingWatch): the remote opens its keyboard
+        .put("typing", Typing.on).put("typing_since", Typing.since)
 
     fun push() {
         val msg = payload().toString()

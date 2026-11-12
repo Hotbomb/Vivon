@@ -696,3 +696,4 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .site-row { flex-wrap: wrap; }
 .site-opens { flex-basis: 100%; display: flex; gap: 6px; }
 .site-opens .chip { flex: 1; height: 34px; font-size: 13px; }
+.air-row.pad-row { margin-top: 0; }

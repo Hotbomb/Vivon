@@ -6,4 +6,5 @@
     <string name="browser_popup">A pop-up was stopped</string>
     <string name="browser_player">Player: the arrows and OK go to the player · Back to leave it</string>
     <string name="browser_player_left">Arrows move between links again</string>
+    <string name="typing_watch_desc">Notices when a text box is picked on the TV, so the phone remote opens its keyboard by itself. Reads nothing else.</string>
 </resources>

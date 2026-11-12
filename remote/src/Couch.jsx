@@ -41,6 +41,31 @@ export function Tools({ onKeyboard, onSpeak, onAirMouse, onPad, disabled, browse
   );
 }
 
+// ---------------------------------------------------------------- the trackpad's buttons
+
+// Under the trackpad while it drives the TV pointer (in place of Back, Home, play and volume): the
+// air mouse's row. Right click, a scroll strip (drag up and down, or sideways), Back and Home.
+export function PointerButtons({ onKey }) {
+  const at = useRef(null);
+  const down = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); at.current = { x: e.clientX, y: e.clientY }; tick(); };
+  const move = (e) => {
+    const a = at.current; if (!a) return;
+    const dx = e.clientX - a.x; const dy = e.clientY - a.y;
+    if (Math.abs(dy) >= Math.abs(dx)) pointer.scroll(dy * 1.4); else pointer.hscroll(dx * 1.4);
+    at.current = { x: e.clientX, y: e.clientY };
+  };
+  const up = () => { at.current = null; };
+  return (
+    <div className="air-row pad-row" role="group" aria-label={t('pointer_buttons')}>
+      <button className="air-btn glass" onClick={() => { tick(); pointer.button('right'); }}><Ic.Mouse size={20} /><span>{t('air_right')}</span></button>
+      <div className="air-scroll glass" role="slider" aria-label={t('air_scroll')} aria-valuenow={0}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}><Ic.Updown size={20} /><span>{t('air_scroll')}</span></div>
+      <button className="air-btn glass" onClick={() => { tick(); onKey('back'); }}><Ic.Back size={20} /><span>{t('back')}</span></button>
+      <button className="air-btn glass" onClick={() => { tick(); onKey('home'); }}><Ic.Home size={20} /><span>{t('home')}</span></button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- the browser bar
 
 // Shown while a browser is in front on the TV: Chrome's own keyboard shortcuts as buttons.

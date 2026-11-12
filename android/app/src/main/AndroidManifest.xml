@@ -112,6 +112,17 @@
                 android:value="Local-network server for a phone remote control of the TV" />
         </service>
 
+        <!-- A text box picked on the TV opens the phone remote's keyboard (allowed with root). -->
+        <service
+            android:name=".TypingWatch"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/typing_watch" />
+        </service>
+
         <!-- Media sessions only (allowed with root): pausing the browser's video, not other apps' music. -->
         <service
             android:name=".MediaWatch"

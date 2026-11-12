@@ -160,6 +160,14 @@ class BridgeService : Service() {
         val p = packageName
         // MediaWatch: to see (and pause) the browser's player only, never other apps' music
         Root.shOrNull("cmd notification allow_listener $p/$p.MediaWatch 2>&1")
+        // TypingWatch (the remote's keyboard opens by itself for a text box on the TV), added to any
+        // accessibility services already on, never replacing them
+        if (Store.bool("auto_keyboard", true)) {
+            val svc = "$p/$p.TypingWatch"
+            Root.shOrNull("cur=\$(settings get secure enabled_accessibility_services); " +
+                "case \"\$cur\" in *$svc*) ;; null|'') settings put secure enabled_accessibility_services $svc ;; " +
+                "*) settings put secure enabled_accessibility_services \"\$cur:$svc\" ;; esac; settings put secure accessibility_enabled 1")
+        }
         // the app in front, from Android's usage records (Tv.frontPackage): fast, no root per key
         Root.shOrNull("appops set $p GET_USAGE_STATS allow 2>&1")
         Root.shOrNull("appops set $p SYSTEM_ALERT_WINDOW allow; dumpsys deviceidle whitelist +$p; " +
