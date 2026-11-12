@@ -28,6 +28,8 @@ import java.lang.reflect.Method;
  *   mm <display> <x> <y>    the mouse moves to x, y (a hover, or a drag while a button is down)
  *   mb <display> <x> <y> <1 left|2 right|4 middle> <1 down|0 up>
  *   mw <display> <x> <y> <v> <h>   the wheel: v up (+) or down (-), h right (+) or left (-), in clicks
+ *   x <0|2>                 the TV (every display but the phone's own) off (0) or on (2): the signal
+ *                           stops, so the TV shows "no signal" and can go to standby by itself
  *   p                       answers "pong"
  *
  * Original code for couch-phone. Nothing here is copied from another project.
@@ -88,6 +90,9 @@ public final class Injector {
                 break;
             case "s":
                 screen(Integer.parseInt(p[1]));
+                break;
+            case "x":
+                external(Integer.parseInt(p[1]));
                 break;
             case "t":
                 text(Integer.parseInt(p[1]), new String(Base64.decode(p.length > 2 ? p[2] : "", Base64.DEFAULT), "UTF-8"));
@@ -223,6 +228,26 @@ public final class Injector {
         if (token == null) throw new IllegalStateException("no built-in display");
         sc.getMethod("setDisplayPowerMode", android.os.IBinder.class, int.class).invoke(null, token, mode);
         System.out.println("screen " + mode);
+        System.out.flush();
+    }
+
+    /** Powers every physical display except the phone's own panel off (0) or on (2). Prints how many. */
+    private static void external(int mode) throws Exception {
+        Class<?> sc = Class.forName("android.view.SurfaceControl");
+        Object internal = null;
+        try { internal = sc.getMethod("getInternalDisplayToken").invoke(null); } catch (Throwable ignored) { }
+        long[] ids = (long[]) sc.getMethod("getPhysicalDisplayIds").invoke(null);
+        Method token = sc.getMethod("getPhysicalDisplayToken", long.class);
+        Method power = sc.getMethod("setDisplayPowerMode", android.os.IBinder.class, int.class);
+        int n = 0;
+        for (int i = 0; ids != null && i < ids.length; i++) {
+            Object t = token.invoke(null, ids[i]);
+            // without the internal token, the first physical display is the phone's own
+            if (t == null || (internal != null ? t.equals(internal) : i == 0)) continue;
+            power.invoke(null, t, mode);
+            n++;
+        }
+        System.out.println("external " + mode + " " + n);
         System.out.flush();
     }
 

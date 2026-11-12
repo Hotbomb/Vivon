@@ -80,6 +80,11 @@ also shows in the Share menu: share a link from any app to **TV** and it opens o
 forget), and **Arrange apps → Add an app to the home**, which lists every app on the phone (hidden
 ones too) and puts the one you tap on the home row.
 
+**Power button** (top right of the remote): stops the picture to the TV. Most TVs then show "no
+signal" and go to standby by themselves, and the phone saves battery. **Turn on the TV** on the
+remote (or the power button again) brings it back. The **sleep timer** in the TV sheet does the
+same after 15 to 90 minutes.
+
 **Battery:** the phone's battery shows in the top right corner of the TV home (green while it
 charges, red when low).
 

@@ -37,11 +37,11 @@ object Now {
     fun payload(): JSONObject = JSONObject()
         .put("ok", true)
         .put("tv_connected", true)       // the server is on the phone that drives the TV: if it answers, it is there
-        .put("power", "on")
+        .put("power", if (TvScreen.tvOff) "off" else "on")
         .put("app", describe(front) ?: JSONObject.NULL)
         .put("volume", JSONObject(Tv.volume()))
         .put("playing", JSONObject.NULL)
-        .put("sleep", JSONObject().put("ends", JSONObject.NULL))
+        .put("sleep", JSONObject().put("ends", if (TvScreen.sleepEnds > 0) iso(TvScreen.sleepEnds) else JSONObject.NULL))
         .put("waking", false)
         .put("who", who ?: JSONObject.NULL)
         .put("picture", JSONObject.NULL)

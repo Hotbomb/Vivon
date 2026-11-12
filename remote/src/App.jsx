@@ -7,7 +7,7 @@ import { TopBar, NowPlaying, Pad, Controls, AskButton } from './Remote.jsx';
 import { Watch } from './Watch.jsx';
 import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sheets.jsx';
 import { usePullDown, usePageDrag } from './gestures.js';
-import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BrowserBar, BROWSERS, useSharedLink } from './Couch.jsx';
+import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink } from './Couch.jsx';
 import { ConnectSheet } from './Connect.jsx';
 import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
@@ -365,15 +365,16 @@ export default function App() {
       <div className="pull-zone" {...pull}>
       {(() => { const d = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.devmode; if (!d?.warning) return null; const said = d.warning_key ? t(d.warning_key, d.warning_vars) : d.warning; return <div className={`devwarn ${d.level || 'warn'}`} role="alert">{said === d.warning_key ? d.warning : said}</div>; })()}
       <TopBar people={people} tvName={thisTv?.name} who={who} setWho={pickWho} tv={tv} appInfo={appById[tv?.app?.id]} reach={reach} sleepLeft={sleepLeft} onPower={onPower} onMore={() => setSheet('more')} />
-      {tvId && <button className="tv-chip glass" onClick={() => { tick(); setSheet('more'); }}><Ic.Screen size={15} /> {t('this_tv', { name: thisTv?.name || t('this') })}</button>}
-      <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />
+      {tvId && tvs.length > 1 && <button className="tv-chip glass" onClick={() => { tick(); setSheet('more'); }}><Ic.Screen size={15} /> {t('this_tv', { name: thisTv?.name || t('this') })}</button>}
+      {/* On DeX the top bar already names the app in front, and nothing reports what is playing. */}
+      {tvKind !== 'dex' && <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />}
       </div>
       <Pad onPointer={tvKind === 'lg' ? (d) => api.pointer(d) : tvKind === 'dex' ? padPointer : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
         tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} />
-      {tvKind === 'dex' && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)} />}
-      {tvKind === 'dex' && !offState && BROWSERS.includes(tv?.app?.package) && <BrowserBar onAddress={openKeyboard} say={say} />}
+      {tvKind === 'dex' && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)}
+        browser={!offState && BROWSERS.includes(tv?.app?.package)} say={say} />}
       <Controls tv={tv} onKey={onKey} onVolume={onVolume} />
-      {wide && askOn && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
+      {wide && askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
     </div>
   );
   const watch = <Watch pull={pull} people={people} who={who || people[0]?.id || 'both'} recs={recs} cont={cont === undefined ? (recs === false ? false : recs?.continue) : cont} apps={apps} hidden={hidden} screens={screens} serviceName={serviceName} onPlay={onPlay} onLaunch={onLaunch} onScreen={onScreen} wide={wide} />;
@@ -394,7 +395,7 @@ export default function App() {
             <section className="page watch-page" aria-label="Watch" inert={tab !== 'watch'}>{watch}</section>
           </div>
           <div className="dock" {...dockDrag}>
-            {askOn && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
+            {askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
             {tabs}
           </div>
         </main>

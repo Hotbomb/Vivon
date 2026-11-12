@@ -64,6 +64,7 @@ object TvScreen {
         }
         override fun onDisplayRemoved(id: Int) {
             main.removeCallbacks(keepOff)
+            if (Dex.tvDisplay() == null) { tvOff = false; removeBlackout(); main.removeCallbacks(sleeper); sleepEnds = 0L }
             if (Dex.tvDisplay() == null) Thread { applyPhone() }.start()   // the TV is gone: phone screen back on
         }
         override fun onDisplayChanged(id: Int) {}
@@ -73,6 +74,77 @@ object TvScreen {
         dm.registerDisplayListener(listener, main)
         ctx.registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         Dex.tvDisplay()?.let { id -> main.postDelayed({ Thread { runCatching { restorePicture(id) }; applyPhone() }.start() }, 4000); main.postDelayed(keepOff, 8000) }
+    }
+
+    // ---------------------------------------------------------------- the TV "off" (the remote's power button)
+
+    /**
+     * The phone cannot switch a TV off (no HDMI-CEC), so "off" stops the picture instead: the TV's
+     * display is powered off (the signal stops, most TVs show "no signal" and go to standby by
+     * themselves after a while, and the phone saves the battery), with a black screen on top in
+     * case the signal keeps going. On again from the remote's power or wake button.
+     */
+    @Volatile var tvOff = false
+        private set
+    private var blackout: android.view.View? = null
+    private var blackoutWm: android.view.WindowManager? = null
+
+    fun setTvOff(off: Boolean) {
+        val d = Dex.tvDisplay()
+        if (off && d == null) throw ApiError(409, "DeX is not on the TV right now.")
+        sleepEnds = 0L; main.removeCallbacks(sleeper)
+        if (off) {
+            tvOff = true
+            runCatching { Cursor.handle(JSONObject().put("show", false)) }
+            showBlackout(d!!)
+            runCatching { RootInput.tvSignal(true) }.onFailure { Log.w(TAG, "tv signal off", it) }
+        } else {
+            tvOff = false
+            runCatching { RootInput.tvSignal(false) }.onFailure { Log.w(TAG, "tv signal on", it) }
+            main.post { removeBlackout() }
+        }
+        Now.push()
+    }
+
+    private fun showBlackout(d: Int) {
+        val disp = dm.getDisplay(d) ?: return
+        main.post {
+            if (blackout != null) return@post
+            runCatching {
+                val dc = ctx.createDisplayContext(disp)
+                val wc = if (android.os.Build.VERSION.SDK_INT >= 30) dc.createWindowContext(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else dc
+                val wm = wc.getSystemService(android.view.WindowManager::class.java)
+                val v = android.view.View(wc).apply { setBackgroundColor(android.graphics.Color.BLACK); keepScreenOn = false }
+                val lp = android.view.WindowManager.LayoutParams(
+                    android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    android.graphics.PixelFormat.OPAQUE)
+                lp.title = "Couch Phone TV off"
+                wm.addView(v, lp)
+                blackout = v; blackoutWm = wm
+            }.onFailure { Log.w(TAG, "blackout", it) }
+        }
+    }
+
+    private fun removeBlackout() {
+        blackout?.let { v -> runCatching { blackoutWm?.removeViewImmediate(v) } }
+        blackout = null; blackoutWm = null
+    }
+
+    // The sleep timer: the TV goes "off" (as above) when it runs out.
+    @Volatile var sleepEnds = 0L
+        private set
+    private val sleeper = Runnable { sleepEnds = 0L; Thread { runCatching { setTvOff(true) } }.start() }
+
+    fun setSleep(minutes: Int) {
+        main.removeCallbacks(sleeper)
+        if (minutes <= 0) { sleepEnds = 0L; Now.push(); return }
+        if (Dex.tvDisplay() == null) throw ApiError(409, "DeX is not on the TV right now.")
+        sleepEnds = System.currentTimeMillis() + minutes.coerceAtMost(600) * 60_000L
+        main.postDelayed(sleeper, minutes.coerceAtMost(600) * 60_000L)
+        Now.push()
     }
 
     // ---------------------------------------------------------------- resolution and text size

@@ -425,6 +425,7 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
   const sheetEl = useRef(null);
   const setRefs = (el) => { sheetEl.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
   const closeDrag = usePushUp(sheetEl, onClose);
+  const dex = tvs?.find((tv) => tv.id === tvId)?.kind === 'dex';
   const endsAt = sleepEnds ? new Date(sleepEnds) : null;
   const left = endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 60000)) : 0;
   return (
@@ -458,7 +459,17 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         </section>
       )}
 
-      <section className={`more-block ${tvs?.length > 1 ? '' : 'first'}`}>
+      {dex && (
+        <div className={`more-grid four ${tvs?.length > 1 ? '' : 'first'}`}>
+          <button className="tile glass" onClick={() => { tick(); onConnect?.('bluetooth'); }}><Ic.Bluetooth /> {t('bluetooth')}</button>
+          <button className="tile glass" onClick={() => { tick(); onConnect?.('wifi'); }}><Ic.Wifi /> {t('wifi')}</button>
+          <button className="tile glass" onClick={() => { tick(); onArrange(); }}><Ic.Grid /> {t('apps_short')}</button>
+          <button className="tile glass" onClick={() => { tick(); onKey('settings'); }}><Ic.Gear /> {t('settings')}</button>
+        </div>
+      )}
+      {dex && <OpenLink say={say} />}
+
+      <section className={`more-block ${tvs?.length > 1 || dex ? '' : 'first'}`}>
         <h3><Ic.Moon size={16} /> {t('sleep_timer')}</h3>
         <div className="chips-row">
           {SLEEP.map((m) => (
@@ -468,31 +479,24 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         <p className="note">{sleepError || (endsAt ? t('turns_off_at', { time: endsAt.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }), n: left }) : t('sleep_note'))}</p>
       </section>
 
-      {tvs?.find((tv) => tv.id === tvId)?.kind === 'dex' && <OpenLink say={say} />}
-      {tvs?.find((tv) => tv.id === tvId)?.kind === 'dex' && <TvScreenSection open={open} />}
+      {dex && <TvScreenSection open={open} />}
 
-      <section className="more-block">
+      {!dex && <section className="more-block">
         <h3><Ic.Keyboard size={16} /> {t('type_on_tv')}</h3>
         <form className="ask-field glass" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) { tick(); onText(typed.trim()); setTyped(''); } }}>
           <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={t('type_placeholder')} enterKeyHint="send" aria-label="Text to type on the TV" />
           <button type="submit" className="round solid small" aria-label={t('send_to_tv')} disabled={!typed.trim()}><Ic.Send size={18} /></button>
         </form>
         <p className="note">{t('type_note')}</p>
-      </section>
+      </section>}
 
-      <div className="more-grid">
+      {!dex && <div className="more-grid">
         <button className="tile glass" onClick={() => { tick(); onKey('captions'); }}><Ic.Captions /> {t('subtitles')}</button>
         <button className="tile glass" onClick={() => { tick(); onKey('input'); }}><Ic.Input /> {t('input')}</button>
         <button className="tile glass" onClick={() => { tick(); onKey('settings'); }}><Ic.Gear /> {t('settings')}</button>
-      </div>
-      {onConnect && tvs?.find((tv) => tv.id === tvId)?.kind === 'dex' && (
-        <div className="more-grid two">
-          <button className="tile glass" onClick={() => { tick(); onConnect('bluetooth'); }}><Ic.Bluetooth /> {t('bluetooth')}</button>
-          <button className="tile glass" onClick={() => { tick(); onConnect('wifi'); }}><Ic.Wifi /> {t('wifi')}</button>
-        </div>
-      )}
+      </div>}
       <div className="arrange-pair">
-        <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>
+        {!dex && <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>}
         <button className="pill glass arrange-open" onClick={() => { tick(); onPeople(); }}><Ic.People size={18} /> {t('people')}</button>
       </div>
 

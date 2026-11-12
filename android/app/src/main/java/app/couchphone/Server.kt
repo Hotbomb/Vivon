@@ -185,11 +185,18 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "GET /api/continue" -> json(200, ok().put("items", JSONArray()))
             "GET /api/history" -> json(200, ok().put("items", JSONArray()))
             "GET /api/music" -> json(200, ok().put("music", JSONObject.NULL))
-            "GET /api/sleep" -> json(200, ok().put("ends", JSONObject.NULL))
             "GET /api/picture" -> json(200, ok().put("mode", JSONObject.NULL).put("supported", false).put("can_set", false))
             "GET /api/screens" -> json(200, ok().put("screens", JSONArray()))
             "POST /api/watch-next" -> json(200, ok())
-            "POST /api/ask", "POST /api/play", "GET /api/find", "POST /api/sleep", "POST /api/picture", "POST /api/power" ->
+            // Power: the TV's picture off and on (TvScreen.setTvOff); the sleep timer turns it off later.
+            "POST /api/power" -> {
+                val st = body(s).optString("state", "toggle")
+                TvScreen.setTvOff(when (st) { "off" -> true; "on" -> false; "toggle" -> !TvScreen.tvOff; else -> throw ApiError(400, "state must be on, off or toggle") })
+                json(200, ok().put("power", if (TvScreen.tvOff) "off" else "on"))
+            }
+            "GET /api/sleep" -> json(200, ok().put("ends", if (TvScreen.sleepEnds > 0) Now.iso(TvScreen.sleepEnds) else JSONObject.NULL))
+            "POST /api/sleep" -> { TvScreen.setSleep(body(s).optInt("minutes")); json(200, ok().put("ends", if (TvScreen.sleepEnds > 0) Now.iso(TvScreen.sleepEnds) else JSONObject.NULL)) }
+            "POST /api/ask", "POST /api/play", "GET /api/find", "POST /api/picture" ->
                 json(501, err("Not in Couch Phone."))
             else -> json(404, err("no such endpoint: $m $path"))
         }

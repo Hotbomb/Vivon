@@ -159,6 +159,9 @@ object RootInput {
     fun mouseButton(d: Int, x: Float, y: Float, button: Int, down: Boolean) = helperSend("mb $d ${x.toInt()} ${y.toInt()} $button ${if (down) 1 else 0}")
     fun mouseWheel(d: Int, x: Float, y: Float, v: Float, h: Float) = helperSend("mw $d ${x.toInt()} ${y.toInt()} $v $h")
 
+    /** The TV's picture (every display but the phone's own): off (true) or on. */
+    fun tvSignal(off: Boolean) = helperSend("x ${if (off) 0 else 2}")
+
     /** The phone's own screen panel: off (true) or on. The TV is not affected. */
     fun phonePanel(off: Boolean) = helperSend("s ${if (off) 0 else 2}")
 
