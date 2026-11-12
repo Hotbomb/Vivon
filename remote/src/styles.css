@@ -697,3 +697,16 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .site-opens { flex-basis: 100%; display: flex; gap: 6px; }
 .site-opens .chip { flex: 1; height: 34px; font-size: 13px; }
 .air-row.pad-row { margin-top: 0; }
+
+/* Couch Phone: the scroll strip on the trackpad's right edge (pointer mode) */
+.pad-scroll { position: absolute; top: 10px; right: 10px; bottom: 10px; width: 54px; z-index: 2; border-radius: 27px;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 12px 0;
+  background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10); color: var(--ink-2);
+  touch-action: none; user-select: none; -webkit-user-select: none; transition: background 0.15s, color 0.15s; }
+.pad-scroll.on { background: rgba(255, 255, 255, 0.16); color: var(--ink); }
+.pad-scroll .ps-down { transform: rotate(180deg); }
+.pad.pointer-mode .hint { left: 14px; right: 78px; white-space: normal; text-align: center; line-height: 1.4; }
+.pad-scroll .ps-grip { display: flex; flex-direction: column; gap: 5px; }
+.pad-scroll .ps-grip i { display: block; width: 18px; height: 3px; border-radius: 2px; background: currentColor; opacity: 0.45; }
+.pad-scroll .ps-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+.pad-scroll .ps-side { display: flex; gap: 2px; opacity: 0.7; }

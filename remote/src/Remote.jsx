@@ -216,8 +216,21 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   const flash = (dir) => { setLit(dir); clearTimeout(flash.t); flash.t = setTimeout(() => setLit(null), 140); };
   const send = (dir) => { onKey(dir); flash(dir); };
 
+  // The scroll strip on the pad's right edge: up and down scroll the page, left and right scroll it sideways.
+  const strip = useRef(null);
+  const [stripOn, setStripOn] = useState(false);
+  const sDown = (e) => { e.stopPropagation(); e.currentTarget.setPointerCapture?.(e.pointerId); strip.current = { x: e.clientX, y: e.clientY }; setStripOn(true); tick(); };
+  const sMove = (e) => {
+    e.stopPropagation();
+    const a = strip.current; if (!a) return;
+    const dx = e.clientX - a.x; const dy = e.clientY - a.y;
+    if (Math.abs(dy) >= Math.abs(dx)) onPointer?.({ scroll: Math.round(dy * 1.6) }); else onPointer?.({ hscroll: Math.round(dx * 1.6) });
+    strip.current = { x: e.clientX, y: e.clientY };
+  };
+  const sUp = (e) => { e.stopPropagation(); strip.current = null; setStripOn(false); };
+
   const pDown = (e) => {
-    if (e.target.closest?.('.pointer-toggle, .pad-msg')) return;
+    if (e.target.closest?.('.pointer-toggle, .pad-msg, .pad-scroll')) return;
     ref.current.setPointerCapture(e.pointerId);
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     if (touches.current.size === 1) pg.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false, two: false };
@@ -335,6 +348,16 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
       aria-label={usePointerMode ? 'Touchpad. Drag to move the TV pointer, tap to click, two fingers to scroll.' : 'Swipe pad. Swipe or tap an arrow to move, tap the middle to select.'}
       onPointerDown={usePointerMode && !disabled ? pDown : down} onPointerMove={usePointerMode && !disabled ? pMove : move}
       onPointerUp={usePointerMode && !disabled ? pUp : up} onPointerCancel={usePointerMode && !disabled ? pUp : cancel}>
+      {usePointerMode && !disabled && (
+        <div className={`pad-scroll ${stripOn ? 'on' : ''}`} role="slider" aria-label={t('air_scroll')} aria-valuenow={0}
+          onPointerDown={sDown} onPointerMove={sMove} onPointerUp={sUp} onPointerCancel={sUp}>
+          <Ic.Chevron className="ps-up" size={16} />
+          <span className="ps-grip" aria-hidden="true"><i /><i /><i /></span>
+          <span className="ps-label">{t('air_scroll')}</span>
+          <span className="ps-side" aria-hidden="true"><Ic.Back size={12} /><Ic.ChevronR size={12} /></span>
+          <Ic.Chevron className="ps-down" size={16} />
+        </div>
+      )}
       {onPointer && !disabled && (
         <button type="button" className={`pointer-toggle ${pointerOn ? 'on' : ''}`} aria-pressed={pointerOn}
           aria-label={pointerOn ? 'Pointer on: tap for arrows' : 'Arrows: tap for the TV pointer'}
