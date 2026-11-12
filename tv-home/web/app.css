@@ -1633,3 +1633,18 @@ html.kw-off #shelf-title, html.kw-off .shelf-clip { display: none; }
 }
 .cn-pw:focus { border-color: #fff; }
 .cn-hint { margin: 0.75rem 0 1.5rem 0.25rem; font-size: 1.1875rem; color: rgba(255, 255, 255, 0.5); }
+
+/* Couch Phone: the phone's battery, a quiet badge in the top right corner */
+.battery {
+  position: fixed; top: 1rem; right: 5.125rem; z-index: 30; display: flex; align-items: center; gap: 0.5rem;
+  font-size: 1.375rem; line-height: 1; font-weight: 550; color: rgba(255, 255, 255, 0.82); font-variant-numeric: tabular-nums;
+  text-shadow: 0 0.0625rem 0.5rem rgba(0, 0, 0, 0.35); pointer-events: none;
+}
+.battery[hidden] { display: none; }
+.battery svg { width: 2.125rem; height: auto; overflow: visible; }
+.battery .bat-shell { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0.75; }
+.battery .bat-tip { fill: currentColor; opacity: 0.75; }
+.battery .bat-fill { fill: currentColor; }
+.battery .bat-bolt { fill: #ffd60a; stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.8; }
+.battery.charging .bat-fill { fill: #34c759; }
+.battery.low { color: #ff6b5e; }

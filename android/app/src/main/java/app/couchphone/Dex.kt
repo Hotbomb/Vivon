@@ -52,6 +52,8 @@ object Dex {
     fun openHome() {
         val d = target()
         val comp = ComponentName(ctx, HomeActivity::class.java)
+        // Couch Phone's own windows still on the phone's screen would pull the home there: off to the TV.
+        if (d != Display.DEFAULT_DISPLAY) { SetupActivity.closeOnPhone(); if (Root.available == true) moveToTv(ctx.packageName, d) }
         if (!rootStart(comp, d)) plainStart(Intent().setComponent(comp), d)
     }
 
@@ -192,6 +194,7 @@ object Dex {
         override fun onDisplayAdded(id: Int) {
             Log.i(TAG, "display added: $id")
             homeDisplay = -1
+            SetupActivity.closeOnPhone()
             Thread { runCatching { applyTaskbar() } }.start()
             // Give DeX a few seconds to finish starting its desktop, then put the home on top.
             main.postDelayed({ if (Store.bool("open_on_dex", true) && tvDisplay() == id) Thread { openHome() }.start() }, 4000)

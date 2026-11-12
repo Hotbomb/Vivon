@@ -63,6 +63,9 @@ settings and paired phones stay.
 on an app** to move it, hide it, or see its info. **Home settings** (the gear) has the look, the
 weather place, and hidden apps. The first row is your favourites.
 
+**Battery:** the phone's battery shows in the top right corner of the TV home (green while it
+charges, red when low).
+
 **The phone's own screen** goes fully off while DeX is on the TV (the phone stays awake, so the TV
 keeps going), and comes back when you unplug. Apps that were open on the phone move to the TV when
 you open them from the home. Both need root.

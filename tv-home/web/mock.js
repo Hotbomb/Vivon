@@ -234,6 +234,7 @@
           return resolve(Object.assign({ ok: true }, mockBt));
         }
         if (path.indexOf("/api/wifi") === 0) return resolve(Object.assign({ ok: true }, mockWifi));
+        if (path.indexOf("/api/battery") === 0) return resolve({ ok: true, level: arg("battery") ? parseInt(arg("battery"), 10) : 82, charging: !!arg("charging") });
         if (path.indexOf("/api/music") === 0) return resolve({ ok: true, music: arg("music") ? mockSong() : null });
         if (path.indexOf("/api/key") === 0) {
           var k = body && body.key;

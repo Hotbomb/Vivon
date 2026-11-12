@@ -100,6 +100,18 @@ class App : Application() {
             return (n(v4) and mask) == (n(mine) and mask)
         }
 
+        /** The phone's battery: {"level": 0-100, "charging": true}. */
+        fun battery(): org.json.JSONObject {
+            val i = instance.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                ?: return org.json.JSONObject().put("level", org.json.JSONObject.NULL)
+            val level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+            val status = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            return org.json.JSONObject().put("level", if (level < 0) org.json.JSONObject.NULL else Math.round(level * 100f / scale))
+                .put("charging", charging).put("plugged", i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0)
+        }
+
         fun homeEnabled(c: Context) = c.packageManager.getComponentEnabledSetting(ComponentName(c, "${c.packageName}.HomeAlias")) !=
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED
 

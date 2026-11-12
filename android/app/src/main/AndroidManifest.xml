@@ -41,10 +41,12 @@
         <meta-data android:name="com.samsung.android.keepalive.density" android:value="true" />
         <meta-data android:name="com.samsung.android.multidisplay.keep_process_alive" android:value="true" />
 
-        <!-- The setup screen: "Couch Phone" in the app list. -->
+        <!-- The setup screen: "Couch Phone" in the app list. Its own task (taskAffinity), so the TV home
+             is never pulled onto the phone's screen with it, and DeX can open it on the TV. -->
         <activity
             android:name=".SetupActivity"
             android:exported="true"
+            android:taskAffinity="app.couchphone.setup"
             android:launchMode="singleTask"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density">
             <intent-filter>

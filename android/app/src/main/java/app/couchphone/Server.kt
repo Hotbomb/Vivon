@@ -137,6 +137,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             }
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
+            "GET /api/battery" -> json(200, ok(App.battery()))
             "GET /api/display" -> json(200, ok(TvScreen.describe()))
             "POST /api/display" -> { TvScreen.set(body(s)); json(200, ok(TvScreen.describe())) }
             // Where the secure remote is (air mouse and speak need https), and whether this page is on it.

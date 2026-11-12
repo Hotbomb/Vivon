@@ -70,6 +70,9 @@ class SetupActivity : Activity() {
         if (Auth.currentPin() == null) Auth.newPin()
     }
 
+    override fun onStart() { super.onStart(); shown = java.lang.ref.WeakReference(this) }
+    override fun onDestroy() { if (shown?.get() === this) shown = null; super.onDestroy() }
+
     override fun onResume() { super.onResume(); Auth.onPin(pinListener); main.post(tick) }
     override fun onPause() { super.onPause(); Auth.offPin(pinListener); main.removeCallbacks(tick) }
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); if (i.getBooleanExtra("pin", false) && Auth.currentPin() == null) Auth.newPin(); refresh() }
@@ -94,6 +97,21 @@ class SetupActivity : Activity() {
     }
 
     companion object {
+        @Volatile private var shown: java.lang.ref.WeakReference<SetupActivity>? = null
+
+        /**
+         * DeX has started: if this screen is open on the phone's own screen, close it. Samsung DeX
+         * will not show an app on the TV while its window is on the phone ("designed for phone
+         * screen"), and the phone's screen goes off anyway. Opened again from DeX, it opens on the TV.
+         */
+        fun closeOnPhone() {
+            val a = shown?.get() ?: return
+            a.runOnUiThread { if (displayOf(a) == android.view.Display.DEFAULT_DISPLAY) a.finishAndRemoveTask() }
+        }
+
+        @Suppress("DEPRECATION")
+        private fun displayOf(a: Activity) = a.windowManager.defaultDisplay.displayId
+
         private val GROUND = Color.parseColor("#0D1E19")
         private val FLAP = Color.parseColor("#131614")
         private val CREAM = Color.parseColor("#F2EAD8")

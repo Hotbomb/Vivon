@@ -1652,6 +1652,23 @@
     shelfEls = Array.prototype.slice.call(track.children);
   }
 
+  // ---------------- the phone's battery (Couch Phone) ----------------
+  // A small badge in the top right corner: the level, a bolt while it charges, red when low.
+  function refreshBattery() {
+    api("GET", "/api/battery").then(function (b) {
+      var el = $("battery");
+      if (!el || !b || typeof b.level !== "number") return;
+      var lvl = Math.max(0, Math.min(100, Math.round(b.level)));
+      var w = (16 * lvl / 100).toFixed(1);
+      el.innerHTML = '<svg viewBox="0 0 26 14" aria-hidden="true"><rect x="0.75" y="0.75" width="21" height="12.5" rx="3" class="bat-shell"/>' +
+        '<rect x="23" y="4.5" width="2.25" height="5" rx="1" class="bat-tip"/><rect x="3" y="3" width="' + w + '" height="8" rx="1.5" class="bat-fill"/>' +
+        (b.charging ? '<path d="M12.5 1.5 7.5 7.6h3.4l-1.4 4.9 5-6.1h-3.4z" class="bat-bolt"/>' : "") + "</svg>" + "<span>" + lvl + "%</span>";
+      el.className = "battery" + (b.charging ? " charging" : lvl <= 15 ? " low" : "");
+      el.setAttribute("aria-label", "Phone battery " + lvl + " percent" + (b.charging ? ", charging" : ""));
+      el.hidden = false;
+    }).catch(function () {});
+  }
+
   // ---------------- apps ----------------
   function tucked(a) {
     return TUCKED.indexOf(a.package) >= 0 || TUCKED_NAMES.test(a.name || "");
@@ -4060,6 +4077,7 @@
     // This TV says who is on its couch first, so what plays here is logged for them (each TV
     // keeps its own); then the lists. Once the home is up: the one-time "tell you about new versions?" question.
     if (!OFFLINE) setInterval(followWho, 3000);
+    if (CFG.app === "couch-phone" && !OFFLINE) { refreshBattery(); setInterval(refreshBattery, 60000); }
     // The bridge's choice wins (a phone that just turned the TV on set it); this TV's own memory is
     // only handed over when the bridge has nobody yet.
     var hello = OFFLINE ? Promise.resolve() : api("GET", "/api/who").then(function (j) {
