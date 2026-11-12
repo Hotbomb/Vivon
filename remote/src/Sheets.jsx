@@ -500,6 +500,10 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         <button className="pill glass arrange-open" onClick={() => { tick(); onPeople(); }}><Ic.People size={18} /> {t('people')}</button>
       </div>
 
+      {typeof window !== 'undefined' && window.CouchApp && window.CouchApp.disconnect && (
+        <button className="pill glass arrange-open" onClick={() => { tick(); window.CouchApp.disconnect(); }}><Ic.Screen size={18} /> {t('switch_tv')}</button>
+      )}
+
       {/* this phone's language: "Same as the TV" follows the TV home's Home settings */}
       <section className="more-block">
         <h3><Ic.Globe size={16} /> {t('language')}</h3>

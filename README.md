@@ -80,6 +80,17 @@ also shows in the Share menu: share a link from any app to **TV** and it opens o
 forget), and **Arrange apps → Add an app to the home**, which lists every app on the phone (hidden
 ones too) and puts the one you tap on the home row.
 
+**Connect a remote** (the phone button at the top of the TV home): two QR codes. Scan the first
+with any phone's camera and the remote opens in its browser, already paired. Scan the second to
+download **Couch Remote**, the Android app (also on the Releases page as couch-remote-*.apk).
+The app finds the TV on the Wi-Fi by itself, or scans the QR code. It speaks through Android's own
+recognizer, the phone's volume buttons turn the TV up and down, and the controller goes full screen.
+
+**Controller:** the fourth button under the pad. Hold the phone sideways: two sticks, a d-pad,
+A B X Y, bumpers, triggers, View, Home and Menu. The TV phone sees a real Xbox-style controller,
+so Steam Link and controller games (Terraria and the like) work with it. Each phone that opens it
+is the next player, up to 4.
+
 **Power button** (top right of the remote): stops the picture to the TV. Most TVs then show "no
 signal" and go to standby by themselves, and the phone saves battery. **Turn on the TV** on the
 remote (or the power button again) brings it back. The **sleep timer** in the TV sheet does the

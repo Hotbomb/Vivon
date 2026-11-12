@@ -8,9 +8,10 @@ import { Sheet } from './Sheets.jsx';
 import { t, locale } from './i18n.js';
 import { api } from './api.js';
 import * as pointer from './pointer.js';
+import { inApp, NativeSpeech } from './appBridge.js';
 
 export const secure = typeof window !== 'undefined' && window.isSecureContext;
-const Speech = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+const Speech = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition || (inApp && window.CouchApp.startSpeech ? NativeSpeech : null));
 const isIos = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
 // ---------------------------------------------------------------- tools row

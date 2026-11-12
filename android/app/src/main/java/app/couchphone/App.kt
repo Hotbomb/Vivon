@@ -168,6 +168,7 @@ class BridgeService : Service() {
         try {
             server = Server(this, Store.port).also { it.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false) }
             Log.i("couchphone", "server on port ${Store.port}")
+            Announce.start(this)
         } catch (e: Exception) { Log.e("couchphone", "server failed to start", e) }
         // The same remote on https (port + 1), for the air mouse and speaking. Making the keys takes
         // a moment, so it starts on its own thread.

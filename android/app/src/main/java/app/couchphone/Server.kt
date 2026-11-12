@@ -49,6 +49,11 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             uri == "/couch-phone.mobileconfig" -> Tls.mobileconfig().toByteArray().let {
                 newFixedLengthResponse(Response.Status.OK, "application/x-apple-aspen-config", java.io.ByteArrayInputStream(it), it.size.toLong())
                     .apply { addHeader("Content-Disposition", "attachment; filename=\"couch-phone.mobileconfig\"") } }
+            // The Couch Remote Android app, built with this version and kept inside it (see build.gradle.kts).
+            uri == "/couch-remote.apk" -> if (exists("remote-app/couch-remote.apk"))
+                newChunkedResponse(Response.Status.OK, "application/vnd.android.package-archive", assets.open("remote-app/couch-remote.apk"))
+                    .apply { addHeader("Content-Disposition", "attachment; filename=\"couch-remote.apk\"") }
+                else newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "The Android app is not in this build.")
             uri == "/tv" -> redirect("/tv/")
             uri == "/tv/config.js" -> newFixedLengthResponse(Response.Status.OK, "application/javascript",
                 "window.COUCH_CONFIG = " + Store.publicConfig() + ";\n").noCache()
@@ -139,6 +144,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "POST /api/open-url" -> { val u = Tv.openUrl(body(s).optString("url")); json(200, ok().put("url", u)) }
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
+            "GET /api/connect" -> json(200, connectInfo())
             "GET /api/battery" -> json(200, ok(App.battery()))
             "GET /api/display" -> json(200, ok(TvScreen.describe()))
             "POST /api/display" -> { TvScreen.set(body(s)); json(200, ok(TvScreen.describe())) }
@@ -243,6 +249,20 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         }
         Now.push()
         return json(200, ok().put("volume", JSONObject(Tv.volume())))
+    }
+
+    /**
+     * For the TV's "Connect a remote" screen: the remote's address with a pairing code in it (one
+     * scan opens the remote already paired, see android/web/shim.js), and the Android app's address.
+     */
+    private fun connectInfo(): JSONObject {
+        val ip = App.lanAddress() ?: throw ApiError(503, "This phone is not on Wi-Fi.")
+        val base = "http://$ip:${Store.port}/"
+        val pin = Auth.currentPin() ?: Auth.newPin()
+        val app = exists("remote-app/couch-remote.apk")
+        val o = ok().put("url", base).put("pin", pin).put("qr_remote", Qr.svg("${base}#cpin=$pin")).put("app", app)
+        if (app) o.put("app_url", "${base}couch-remote.apk").put("qr_app", Qr.svg("${base}couch-remote.apk"))
+        return o
     }
 
     private fun homeAdd(pkg: String) {

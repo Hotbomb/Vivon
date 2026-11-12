@@ -58,6 +58,14 @@
     cn_confirm_move: "Press OK again to join {name}. The phone remote disconnects until your phone is on {name} too.",
     cn_confirm_forget: "Press OK again to forget {name}.",
     cn_confirm_unpair: "Press OK again to unpair {name}.",
+    cn_remote_title: "Connect a remote",
+    cn_remote_browser: "Use it in the phone's browser",
+    cn_remote_browser_sub: "Scan with the phone's camera. It opens the remote, already paired.",
+    cn_remote_app: "Get the Android app",
+    cn_remote_app_sub: "Scan, install Couch Remote, open it: it finds this TV by itself.",
+    cn_remote_no_app: "The Android app is not in this version of Couch Phone.",
+    cn_remote_manual: "No camera? Open {url} on the phone and type the code {pin}.",
+    cn_remote_hint: "Back or OK to close. A code works once: it changes when a phone has used it.",
     cn_system: "Android's own {name} settings",
     cn_system_sub: "Everything else, on the phone's settings screen",
     cn_working: "One moment…",
@@ -75,6 +83,7 @@
   };
 
   var ICON = {
+    phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
     bluetooth: '<svg viewBox="0 0 24 24"><path d="M6.5 7.5l11 9-5.5 4.5v-18l5.5 4.5-11 9"/></svg>',
     wifi: '<svg viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.7 12.5a9.5 9.5 0 0 1 12.6 0M8.9 16a4.8 4.8 0 0 1 6.2 0"/><circle cx="12" cy="19.3" r="1"/></svg>',
     headphones: '<svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4" height="6.5" rx="1.6"/><rect x="16.5" y="14" width="4" height="6.5" rx="1.6"/></svg>',
@@ -173,9 +182,28 @@
     if (S2.btn < 0) S2.btn = 0;
   }
 
+  // Connect a remote: two QR codes, the remote in the browser (already paired) and the Android app.
+  function paintRemote(el) {
+    var d = S2.data;
+    var html = '<h1 class="cn-title">' + ICON.phone + "<span>" + esc(t("cn_remote_title")) + "</span></h1>";
+    html += '<p class="cn-msg' + (S2.err ? " err" : "") + '" aria-live="polite">' + esc(S2.err || "") + "</p>";
+    if (!d) { el.innerHTML = html + '<p class="cn-info quiet">' + esc(t("cn_working")) + "</p>"; return; }
+    var card = function (qr, title, sub, foot) {
+      return '<div class="rc-card"><div class="rc-qr">' + (qr || "") + '</div><b>' + esc(title) + "</b><small>" + esc(sub) + "</small>" + (foot ? '<code>' + esc(foot) + "</code>" : "") + "</div>";
+    };
+    html += '<div class="rc-cards">' + card(d.qr_remote, t("cn_remote_browser"), t("cn_remote_browser_sub"), d.url);
+    html += d.app ? card(d.qr_app, t("cn_remote_app"), t("cn_remote_app_sub"), d.app_url) : card("", t("cn_remote_app"), t("cn_remote_no_app"));
+    html += "</div>";
+    if (d.pin) html += '<p class="rc-manual">' + esc(t("cn_remote_manual", { url: d.url, pin: d.pin.slice(0, 3) + " " + d.pin.slice(3) })) + "</p>";
+    html += '<p class="cn-hint">' + esc(t("cn_remote_hint")) + "</p>";
+    el.innerHTML = html;
+  }
+
   function paint() {
     var el = $("connect");
     if (!el) return;
+    el.classList.toggle("remote", S2.kind === "remote");
+    if (S2.kind === "remote") { paintRemote(el); return; }
     build(); fixFocus();
     var html = '<h1 class="cn-title">' + (S2.kind === "bluetooth" ? ICON.bluetooth : ICON.wifi) + "<span>" + esc(t(S2.kind === "bluetooth" ? "cn_bt_title" : "cn_wifi_title")) + "</span></h1>";
     html += '<p class="cn-msg' + (S2.err ? " err" : "") + '" aria-live="polite">' + esc(S2.err || S2.note || (S2.busy ? t("cn_working") : (S2.data && S2.data.note) || "")) + "</p>";
@@ -209,7 +237,7 @@
   }
 
   function load() {
-    return api("GET", S2.kind === "bluetooth" ? "/api/bluetooth" : "/api/wifi").then(function (d) {
+    return api("GET", S2.kind === "remote" ? "/api/connect" : S2.kind === "bluetooth" ? "/api/bluetooth" : "/api/wifi").then(function (d) {
       if (!S2.open) return;
       S2.data = d; S2.err = ""; if (!S2.busy) paint();
     }).catch(function (e) { if (!S2.open) return; S2.err = e.message; paint(); });
@@ -220,7 +248,8 @@
     if (!S2.open) return;
     // Bluetooth changes quickly while searching or pairing; Wi-Fi asks Android less often.
     var fast = S2.data && (S2.data.searching || S2.data.pairing);
-    S2.timer = setTimeout(function () { if (S2.busy || S2.pw) { schedule(); return; } load().then(schedule); }, S2.kind === "bluetooth" ? (fast ? 1500 : 4000) : 8000);
+    S2.timer = setTimeout(function () { if (S2.busy || S2.pw) { schedule(); return; } load().then(schedule); },
+      S2.kind === "remote" ? 4000 : S2.kind === "bluetooth" ? (fast ? 1500 : 4000) : 8000);
   }
 
   function act(body, note) {
@@ -243,6 +272,7 @@
   function disarm() { S2.armed = null; S2.note = ""; clearTimeout(S2.armTimer); }
 
   function ok() {
+    if (S2.kind === "remote") { close(); return; }
     var r = rows[S2.row]; if (!r || !r.acts || S2.busy) return;
     var a = r.acts[S2.btn] || r.acts[0], id = a.id, d = S2.data || {};
     if (id === "system") { S2.api("POST", "/api/launch", { app: S2.kind === "bluetooth" ? "bluetooth" : "network" }).catch(function () {}); close(); return; }
@@ -278,6 +308,7 @@
   }
 
   function move(dx, dy) {
+    if (S2.kind === "remote") return;
     if (dy) {
       var i = S2.row + dy;
       while (i >= 0 && i < rows.length && !focusable(rows[i])) i += dy;
@@ -318,12 +349,12 @@
   }
 
   function open(kind, apiFn, onClose) {
-    S2.open = true; S2.kind = kind === "network" || kind === "wifi" ? "wifi" : "bluetooth";
+    S2.open = true; S2.kind = kind === "remote" ? "remote" : kind === "network" || kind === "wifi" ? "wifi" : "bluetooth";
     S2.api = apiFn; S2.onClose = onClose || null;
     S2.data = null; S2.err = ""; S2.note = ""; S2.row = 0; S2.btn = 0; S2.pw = null; S2.searched = false; disarm();
     var el = $("connect");
     if (!el) { el = document.createElement("div"); el.id = "connect"; el.className = "connect"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); document.body.appendChild(el); }
-    el.setAttribute("aria-label", t(S2.kind === "bluetooth" ? "cn_bt_title" : "cn_wifi_title"));
+    el.setAttribute("aria-label", t(S2.kind === "remote" ? "cn_remote_title" : S2.kind === "bluetooth" ? "cn_bt_title" : "cn_wifi_title"));
     el.classList.add("on");
     paint();
     load().then(schedule);

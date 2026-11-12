@@ -91,5 +91,23 @@
   }
 
   window.couchTv = { token: function () { return token; }, pair: showPairing };
+
+  // Scanned from the TV's "Connect a remote" screen: the link carries the pairing code
+  // (#cpin=123456, never sent over the network), so the phone pairs without typing it.
+  var scanned = location.hash.match(/[#&]cpin=(\d{6})/);
+  if (scanned) {
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
+    if (!token) {
+      var name = /Android/.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Phone';
+      realFetch('/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin: scanned[1], name: name }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j.ok && j.token) { save(j.token); location.reload(); }
+          else showPairing((j.error || 'That code did not work.') + ' Type the code shown on the TV.');
+        })
+        .catch(function () { showPairing('Can’t reach the TV.'); });
+      return;
+    }
+  }
   if (!token) showPairing();
 })();

@@ -185,6 +185,7 @@ S.en = {
   paste_open: 'Paste and open',
   paste_blocked: 'The phone would not share its clipboard. Paste into the box instead.',
   link_opened: 'Opening on the TV',
+  switch_tv: 'Connect to another TV',
   controller: 'Controller',
   pad_short: 'Pad',
   pad_player: 'Player {n}',

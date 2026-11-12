@@ -10,6 +10,7 @@ import { usePullDown, usePageDrag } from './gestures.js';
 import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink } from './Couch.jsx';
 import { ConnectSheet } from './Connect.jsx';
 import { ControllerScreen } from './Controller.jsx';
+import { inApp } from './appBridge.js';
 import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
@@ -247,6 +248,9 @@ export default function App() {
   const [wakeError, setWakeError] = useState(null);
   useEffect(() => { if (tv?.power === 'on') setWakeError(null); }, [tv?.power]);
   const onKey = (key, hold) => run(api.key(key, hold));
+  // The Couch Remote app hands the phone's own volume buttons to the TV.
+  const onKeyRef = useRef(onKey); onKeyRef.current = onKey;
+  useEffect(() => { if (!inApp) return undefined; window.couchAppKey = (k) => onKeyRef.current(k); return () => { delete window.couchAppKey; }; }, []);
   const onVolume = (a) => run(api.volume(a));
   // A fully off TV leaves the Wi-Fi; the bridge tries Wake-on-LAN for up to 25 s, then gives up.
   const onWake = async () => {
@@ -298,7 +302,7 @@ export default function App() {
   const openKeyboard = () => { tick(); flushSync(() => setSheet('keyboard')); kbInput.current?.focus({ preventScroll: true }); };
   const openSpeak = () => {
     tick();
-    if (!secure) { setSecureWhy('speak'); setSheet('secure'); return; }
+    if (!secure && !inApp) { setSecureWhy('speak'); setSheet('secure'); return; }
     flushSync(() => setSheet('speak')); speakRef.current?.start();
   };
   const openAir = () => {

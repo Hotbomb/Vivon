@@ -75,12 +75,15 @@ jobs:
           else
             echo "::warning::SIGNING_PASSWORD secret is not set: this build is a test only and makes no release. See README, 'One-time setup'."
           fi
-          gradle -p android --no-daemon assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
+          gradle -p android --no-daemon :remote-app:assembleRelease :app:assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/couch-phone-$VERSION_NAME.apk"
+          cp android/remote-app/build/outputs/apk/release/remote-app-release.apk "out/couch-remote-$VERSION_NAME.apk"
           ls -la out
           # the mouse helper must be inside the APK
           unzip -l "out/couch-phone-$VERSION_NAME.apk" | grep libcouchmouse.so
+          # and the remote app inside it, for the TV's "Connect a remote" screen
+          unzip -l "out/couch-phone-$VERSION_NAME.apk" | grep assets/remote-app/couch-remote.apk
 
       - name: Check the signature
         if: ${{ env.HAS_KEY == 'true' }}
@@ -105,5 +108,8 @@ jobs:
           body: |
             Download **couch-phone-${{ env.VERSION_NAME }}.apk** below and open it on the Galaxy S10e.
             It installs over any earlier Couch Phone release.
+
+            **couch-remote-${{ env.VERSION_NAME }}.apk** is the remote as an Android app, for your phone
+            (the TV also hands it out: "Connect a remote" on the TV home).
 
             Built from `${{ github.sha }}` on branch `${{ github.ref_name }}`.

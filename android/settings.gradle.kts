@@ -6,3 +6,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "couch-phone"
 include(":app")
+include(":remote-app")
