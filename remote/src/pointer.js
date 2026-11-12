@@ -23,6 +23,12 @@ export const getPadSpeed = () => padSpeed;
 export const padGain = () => SPEEDS[padSpeed - 1];
 export const setPadSpeed = (n) => { padSpeed = Math.min(5, Math.max(1, n)); try { localStorage.setItem('tv.pad.speed', String(padSpeed)); } catch (e) { /* */ } };
 
+// Enhanced pointer precision (acceleration, as on a PC): a quick flick goes further than a slow move.
+let padAccel = true;
+try { padAccel = localStorage.getItem('tv.pad.accel') !== '0'; } catch (e) { /* */ }
+export const getPadAccel = () => padAccel;
+export const setPadAccel = (on) => { padAccel = !!on; try { localStorage.setItem('tv.pad.accel', on ? '1' : '0'); } catch (e) { /* */ } };
+
 export const setPointerErrorHandler = (fn) => { onError = fn; chan.setChannelErrorHandler((e) => fail(e.message)); };
 const fail = (msg) => { if (onError && Date.now() - lastError > 4000) { lastError = Date.now(); onError(new Error(msg)); } };
 

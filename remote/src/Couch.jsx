@@ -69,7 +69,7 @@ export function PointerButtons({ onKey }) {
 // ---------------------------------------------------------------- the browser bar
 
 // Shown while a browser is in front on the TV: Chrome's own keyboard shortcuts as buttons.
-export const BROWSERS = ['com.android.chrome', 'com.chrome.beta', 'com.sec.android.app.sbrowser', 'org.mozilla.firefox'];
+export const BROWSERS = ['com.android.chrome', 'com.brave.browser'];   // Chrome and Brave only
 
 function BrowserButtons({ onAddress, say }) {
   const send = (name) => { tick(); api.shortcut(name).catch((e) => say?.(e.message, 'err')); };

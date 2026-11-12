@@ -1,5 +1,5 @@
 import { makePadSender } from './padSender.js';
-import { padGain } from './pointer.js';
+import { padGain, getPadAccel } from './pointer.js';
 import { useEffect, useRef, useState } from 'react';
 import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
@@ -243,7 +243,8 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     } else {
       // faster swipes go further (pointer acceleration), so the TV's whole screen is one easy swipe away
       const now = performance.now(); const dt = Math.max(1, now - (s.lt || now - 16)); s.lt = now;
-      const g = GAIN * padGain() * (1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9));
+      // with enhanced precision, faster swipes go further; without it, the pointer moves exactly as the finger
+      const g = GAIN * padGain() * (getPadAccel() ? 1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9) : 1.5);
       addPointer('dx', dx * g); addPointer('dy', dy * g);
     }
   };

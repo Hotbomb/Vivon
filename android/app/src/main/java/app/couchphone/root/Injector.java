@@ -30,6 +30,9 @@ import java.lang.reflect.Method;
  *   mw <display> <x> <y> <v> <h>   the wheel: v up (+) or down (-), h right (+) or left (-), in clicks
  *   x <0|2>                 the TV (every display but the phone's own) off (0) or on (2): the signal
  *                           stops, so the TV shows "no signal" and can go to standby by itself
+ *   ao <address|->          media sound to that Bluetooth device (its address), or "-" back to normal
+ *                           (the TV): AudioService's preferred device for the media strategy, which
+ *                           needs a system permission root has
  *   p                       answers "pong"
  *
  * Original code for couch-phone. Nothing here is copied from another project.
@@ -93,6 +96,9 @@ public final class Injector {
                 break;
             case "x":
                 external(Integer.parseInt(p[1]));
+                break;
+            case "ao":
+                audioOut(p.length > 1 ? p[1] : "-");
                 break;
             case "t":
                 text(Integer.parseInt(p[1]), new String(Base64.decode(p.length > 2 ? p[2] : "", Base64.DEFAULT), "UTF-8"));
@@ -248,6 +254,49 @@ public final class Injector {
             n++;
         }
         System.out.println("external " + mode + " " + n);
+        System.out.flush();
+    }
+
+    // ---------------------------------------------------------------- where media sound goes
+
+    /** The media strategy's id (the one that plays USAGE_MEDIA), from AudioProductStrategy. */
+    private static int mediaStrategy() throws Exception {
+        Class<?> aps = Class.forName("android.media.audiopolicy.AudioProductStrategy");
+        java.util.List<?> list = (java.util.List<?>) aps.getMethod("getAudioProductStrategies").invoke(null);
+        android.media.AudioAttributes media = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).build();
+        Method supports = aps.getMethod("supportsAudioAttributes", android.media.AudioAttributes.class);
+        Method id = aps.getMethod("getId");
+        for (Object s : list) if ((Boolean) supports.invoke(s, media)) return (Integer) id.invoke(s);
+        throw new IllegalStateException("no media strategy");
+    }
+
+    private static void audioOut(String address) throws Exception {
+        Object binder = Class.forName("android.os.ServiceManager").getMethod("getService", String.class).invoke(null, "audio");
+        Object audio = Class.forName("android.media.IAudioService$Stub").getMethod("asInterface", android.os.IBinder.class).invoke(null, binder);
+        int strategy = mediaStrategy();
+        Class<?> ada = Class.forName("android.media.AudioDeviceAttributes");
+        if ("-".equals(address)) {
+            for (Method m : audio.getClass().getMethods()) {
+                if ((m.getName().equals("removePreferredDevicesForStrategy") || m.getName().equals("removePreferredDeviceForStrategy"))
+                        && m.getParameterTypes().length == 1) { m.invoke(audio, strategy); break; }
+            }
+            System.out.println("audio normal");
+            System.out.flush();
+            return;
+        }
+        // role 2: an output; type 8: AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+        Object dev = ada.getConstructor(int.class, int.class, String.class).newInstance(2, 8, address);
+        boolean done = false;
+        for (Method m : audio.getClass().getMethods()) {
+            Class<?>[] t = m.getParameterTypes();
+            if (m.getName().equals("setPreferredDevicesForStrategy") && t.length == 2 && t[1] == java.util.List.class) {
+                m.invoke(audio, strategy, java.util.Collections.singletonList(dev)); done = true; break;
+            }
+            if (m.getName().equals("setPreferredDeviceForStrategy") && t.length == 2 && t[1] == ada) {
+                m.invoke(audio, strategy, dev); done = true; break;
+            }
+        }
+        System.out.println(done ? "audio " + address : "err no preferred-device call");
         System.out.flush();
     }
 

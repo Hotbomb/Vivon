@@ -11,6 +11,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -99,6 +101,10 @@ object Bt {
                         })
                         .put("code", if (key >= 0) (if (variant == 4) key.toString() else String.format("%06d", key)) else JSONObject.NULL)
                 }
+                BluetoothDevice.ACTION_ACL_CONNECTED -> dev?.let { d ->
+                    // the speaker chosen for the sound came back: the sound goes to it again (once it can play)
+                    if (d.address == Store.str("audio_out")) Handler(Looper.getMainLooper()).postDelayed({ Thread { runCatching { RootInput.audioOut(d.address) } }.start() }, 3000)
+                }
                 BluetoothDevice.ACTION_BOND_STATE_CHANGED -> dev?.let {
                     val st = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
                     if (st != BluetoothDevice.BOND_BONDING && pairing?.optString("address") == it.address) pairing = null
@@ -114,7 +120,7 @@ object Bt {
         val f = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_FOUND); addAction(BluetoothDevice.ACTION_NAME_CHANGED)
             addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED); addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
-            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED); addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
         }
         // Android's pairing request is only sent to apps that hold BLUETOOTH_PRIVILEGED: then it is simply missed.
         if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(receiver, f, Context.RECEIVER_EXPORTED)
@@ -186,7 +192,27 @@ object Bt {
             // named devices first, strongest signal first; unnamed ones (only an address) last
             .sortedWith(compareBy({ it.optString("name") == it.optString("address") }, { -(it.optInt("signal", -200)) }))
             .take(30).forEach { list.put(it) }
-        return o.put("paired", paired).put("found", list)
+        return o.put("paired", paired).put("found", list).put("audio", audio())
+    }
+
+    // ---------------------------------------------------------------- where the sound goes
+
+    /** {"out": address or null (the TV), "speakers": [{address, name}]}: Bluetooth speakers that can play now. */
+    private fun audio(): JSONObject {
+        val speakers = JSONArray()
+        runCatching { proxies[BluetoothProfile.A2DP]?.connectedDevices }.getOrNull().orEmpty().forEach { d ->
+            speakers.put(JSONObject().put("address", d.address).put("name", runCatching { d.alias ?: d.name }.getOrNull() ?: d.address))
+        }
+        val out = Store.str("audio_out")?.takeIf { a -> (0 until speakers.length()).any { speakers.getJSONObject(it).optString("address") == a } }
+        return JSONObject().put("out", out ?: JSONObject.NULL).put("speakers", speakers)
+    }
+
+    /** Media sound to that Bluetooth speaker, or (null) back to the TV. Kept, and set again when it reconnects. */
+    private fun setAudio(address: String?) {
+        if (Root.available == false) throw ApiError(503, "Choosing the sound output needs root.")
+        RootInput.audioOut(address)
+        Store.putStr("audio_out", address)
+        lastNote = if (address == null) "Sound comes out of the TV." else "Sound comes out of the speaker."
     }
 
     // ---------------------------------------------------------------- actions
@@ -206,6 +232,8 @@ object Bt {
                 searchingUntil = System.currentTimeMillis() + 15_000
             }
             "stop" -> { runCatching { a.cancelDiscovery() }; searchingUntil = 0 }
+            // {"action":"audio","address":"AA:BB:..."} or no address: the TV
+            "audio" -> setAudio(b.optString("address").uppercase().takeIf { BluetoothAdapter.checkBluetoothAddress(it) })
             else -> {
                 val addr = b.optString("address").uppercase()
                 if (!BluetoothAdapter.checkBluetoothAddress(addr)) throw ApiError(400, "address is required")
@@ -230,7 +258,7 @@ object Bt {
                         lastNote = if (on) "Connecting ${d.name ?: addr}…" else "${d.name ?: addr} is disconnected."
                     }
                     "cancel" -> { runCatching { d.javaClass.getMethod("cancelBondProcess").invoke(d) }; pairing = null }
-                    else -> throw ApiError(400, "action must be on, off, search, stop, pair, unpair, connect, disconnect or cancel")
+                    else -> throw ApiError(400, "action must be on, off, search, stop, audio, pair, unpair, connect, disconnect or cancel")
                 }
             }
         }

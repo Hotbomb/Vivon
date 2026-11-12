@@ -210,6 +210,9 @@ object RootInput {
     fun mouseButton(d: Int, x: Float, y: Float, button: Int, down: Boolean) = helperSend("mb $d ${x.toInt()} ${y.toInt()} $button ${if (down) 1 else 0}")
     fun mouseWheel(d: Int, x: Float, y: Float, v: Float, h: Float) = helperSend("mw $d ${x.toInt()} ${y.toInt()} $v $h")
 
+    /** Media sound to a Bluetooth device (its address), or null: back to normal (the TV). */
+    fun audioOut(address: String?) = helperSend("ao ${address ?: "-"}")
+
     /** The TV's picture (every display but the phone's own): off (true) or on. */
     fun tvSignal(off: Boolean) = helperSend("x ${if (off) 0 else 2}")
 

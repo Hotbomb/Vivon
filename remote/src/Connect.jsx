@@ -67,6 +67,19 @@ export function ConnectSheet({ open, kind, onClose, say }) {
                 : t('cn_pair_confirm', { code: st.pairing.code || '', name: st.pairing.name })}
             </p>
           )}
+          {st.audio?.speakers?.length > 0 && (
+            <>
+              <h3 className="cn-head">{t('cn_sound_out')}</h3>
+              <div className="chips-row chips-wrap" role="radiogroup" aria-label={t('cn_sound_out')}>
+                <button role="radio" aria-checked={!st.audio.out} disabled={!!busy} className={`chip glass ${!st.audio.out ? 'on' : ''}`}
+                  onClick={() => act({ action: 'audio' }, 'audio')}>{t('cn_sound_tv')}</button>
+                {st.audio.speakers.map((sp) => (
+                  <button key={sp.address} role="radio" aria-checked={st.audio.out === sp.address} disabled={!!busy}
+                    className={`chip glass ${st.audio.out === sp.address ? 'on' : ''}`} onClick={() => act({ action: 'audio', address: sp.address }, 'audio')}>{sp.name}</button>
+                ))}
+              </div>
+            </>
+          )}
           <h3 className="cn-head">{t('cn_paired')}</h3>
           {!(st.paired || []).length && <p className="note">{t('cn_none_paired')}</p>}
           <ul className="arrange">

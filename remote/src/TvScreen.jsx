@@ -5,11 +5,12 @@ import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
-import { getPadSpeed, setPadSpeed } from './pointer.js';
+import { getPadSpeed, setPadSpeed, getPadAccel, setPadAccel } from './pointer.js';
 
 // The trackpad's speed, 1 to 5 (kept on this phone; the TV also scales it to its screen size).
 export function PadSpeedSection() {
   const [n, setN] = useState(getPadSpeed());
+  const [accel, setAccel] = useState(getPadAccel());
   return (
     <section className="more-block">
       <h3><Ic.Cursor size={16} /> {t('pad_speed')}</h3>
@@ -20,6 +21,12 @@ export function PadSpeedSection() {
         ))}
       </div>
       <p className="note">{t('pad_speed_note')}</p>
+      <p className="note">{t('pad_accel')}</p>
+      <div className="chips-row" role="radiogroup" aria-label={t('pad_accel')}>
+        <button role="radio" aria-checked={accel} className={`chip glass ${accel ? 'on' : ''}`} onClick={() => { tick(); setPadAccel(true); setAccel(true); }}>{t('on')}</button>
+        <button role="radio" aria-checked={!accel} className={`chip glass ${!accel ? 'on' : ''}`} onClick={() => { tick(); setPadAccel(false); setAccel(false); }}>{t('off')}</button>
+      </div>
+      <p className="note">{t('pad_accel_note')}</p>
     </section>
   );
 }
