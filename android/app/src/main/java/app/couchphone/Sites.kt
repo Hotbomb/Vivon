@@ -24,12 +24,59 @@ object Sites {
     const val PREFIX = "site:"
     private const val BRAVE = "com.brave.browser"
 
-    data class Site(val slug: String, val name: String, val url: String, val browser: String?) {
+    /** pinned: a shortcut pinned from a browser (Brave's "Add to Home screen"), found by itself. */
+    data class Site(val slug: String, val name: String, val url: String, val browser: String?,
+                    val pinned: Boolean = false, val bitmapPath: String? = null) {
         val id get() = PREFIX + slug
         fun json(): JSONObject = JSONObject().put("slug", slug).put("name", name).put("url", url).put("browser", browser ?: JSONObject.NULL)
+            .put("pinned", pinned)
     }
 
-    @Synchronized fun list(): List<Site> {
+    /** Every website tile: the ones added here, then shortcuts pinned from browsers. */
+    fun list(): List<Site> {
+        val own = added()
+        val hosts = own.mapNotNull { android.net.Uri.parse(it.url).host?.removePrefix("www.") }.toSet()
+        return own + pinned().filter { android.net.Uri.parse(it.url).host?.removePrefix("www.") !in hosts }
+    }
+
+    // ---------------------------------------------------------------- shortcuts pinned from browsers
+    //
+    // Brave (like most browsers) cannot install a site as an app: "Add to Home screen" pins a
+    // shortcut, which Android gives to the phone's own home screen, not to Couch Phone. With root,
+    // Android's shortcut service lists them all (`dumpsys shortcut`): the pinned ones that open a web
+    // address become website tiles, opening in the browser that pinned them.
+
+    @Volatile private var pinCache: List<Site> = emptyList()
+    @Volatile private var pinAt = 0L
+    private const val FLAG_PINNED = 2L
+    private const val FLAG_DISABLED = 64L
+
+    private fun pinned(): List<Site> {
+        val now = System.currentTimeMillis()
+        if (now - pinAt < 60_000 || Root.available != true) return pinCache
+        pinAt = now
+        val dump = Root.shOrNull("dumpsys shortcut 2>/dev/null", 15_000) ?: return pinCache
+        val found = ArrayList<Site>()
+        for (block in dump.split("ShortcutInfo {").drop(1)) {
+            val b = block.substringBefore("\n    Package:").substringBefore("\n  User:")
+            val flags = Regex("flags=0x([0-9a-fA-F]+)").find(b)?.groupValues?.get(1)?.toLongOrNull(16) ?: continue
+            if (flags and FLAG_PINNED == 0L || flags and FLAG_DISABLED != 0L) continue
+            val pkg = Regex("packageName=([A-Za-z0-9_.]+)").find(b)?.groupValues?.get(1) ?: continue
+            val url = Regex("dat=(https?://[^\\s,}\\]]+)").find(b)?.groupValues?.get(1)?.removeSuffix("...") ?: continue
+            val host = android.net.Uri.parse(url).host ?: continue
+            val id = Regex("\\bid=([^,]+)").find(b)?.groupValues?.get(1)?.trim() ?: url
+            val label = Regex("shortLabel=(.*?), [A-Za-z]+=").find(b)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                ?: host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() }
+            val bitmap = Regex("(?i)bitmapPath=(/[^,}\\s]+)").find(b)?.groupValues?.get(1)
+            val slug = "pin-" + java.security.MessageDigest.getInstance("SHA-1").digest("$pkg/$id".toByteArray()).take(5).joinToString("") { "%02x".format(it) }
+            if (found.none { it.slug == slug }) found += Site(slug, label.take(40), url, pkg, pinned = true, bitmapPath = bitmap)
+        }
+        pinCache = found
+        return found
+    }
+
+    /** The websites added from the remote. */
+    @Synchronized private fun added(): List<Site> {
         val a = Store.str("sites")?.let { runCatching { JSONArray(it) }.getOrNull() } ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
             val o = a.optJSONObject(i) ?: return@mapNotNull null
@@ -52,7 +99,7 @@ object Sites {
         if (uri.scheme != "http" && uri.scheme != "https") throw ApiError(400, "Only web addresses (http or https).")
         val name = nameIn.trim().ifEmpty { host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() } }.take(40)
         val base = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "site" }.take(24)
-        val have = list()
+        val have = added()
         var slug = base; var n = 2
         while (have.any { it.slug == slug }) slug = "$base-${n++}"
         val s = Site(slug, name, u, browser ?: BRAVE)
@@ -64,7 +111,8 @@ object Sites {
 
     @Synchronized fun remove(id: String) {
         val s = find(id) ?: return
-        save(list().filter { it.slug != s.slug })
+        if (s.pinned) throw ApiError(409, "${s.name} is a shortcut pinned in the browser: remove it there (or take it off this page).")
+        save(added().filter { it.slug != s.slug })
         iconFile(s.slug).delete()
     }
 
@@ -84,6 +132,12 @@ object Sites {
         val s = find(id) ?: return null
         val f = iconFile(s.slug)
         if (f.isFile) return f.readBytes()
+        if (s.bitmapPath != null && Root.available == true) runCatching {
+            val b64 = Root.sh("base64 -w 0 '${s.bitmapPath}'; echo", 8000).trim()
+            val raw = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            val bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size)
+            if (bmp != null) { f.writeBytes(tile(bmp)); bmp.recycle(); return f.readBytes() }
+        }
         Thread { runCatching { fetchIcon(s) } }.start()   // not fetched yet (or failed): try again for next time
         return null
     }

@@ -242,7 +242,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                 .put("icon", "/api/app-icon/$pkg")) }
         // website tiles (Sites.kt), listed like apps
         Sites.list().forEach { site -> arr.put(JSONObject().put("id", site.id).put("name", site.name).put("package", site.id).put("colour", "#2A2A30")
-            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url)) }
+            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url).put("pinned", site.pinned)) }
         return arr
     }
 

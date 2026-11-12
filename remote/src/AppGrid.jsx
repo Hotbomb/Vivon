@@ -118,10 +118,10 @@ export function AppGrid({ apps, tvHidden, logoFor, AppIcon, short, onLaunch, onA
                 {all.filter((a) => a.kind === 'site').map((a) => (
                   <li key={keyOf(a)} className="arrange-row glass site-row">
                     <b><span className="cn-name">{a.name}</span><small>{(a.url || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}</small></b>
-                    <button type="button" className="pill glass small" disabled={siteBusy} onClick={() => {
+                    {a.pinned ? <small className="site-pinned">{t('site_pinned')}</small> : <button type="button" className="pill glass small" disabled={siteBusy} onClick={() => {
                       tick(); setSiteBusy(true);
                       api.removeSite(keyOf(a)).then(() => { setSiteMsg(t('site_removed', { name: a.name })); onAppsChanged?.(); }, (e) => setSiteMsg(e.message)).finally(() => setSiteBusy(false));
-                    }}>{t('site_delete')}</button>
+                    }}>{t('site_delete')}</button>}
                   </li>
                 ))}
               </ul>

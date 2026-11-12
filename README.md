@@ -93,7 +93,9 @@ is the next player, up to 4.
 
 **Website tiles:** remote, Watch, Edit, Websites: type an address (like cinejoy.pk) and the site
 becomes a tile with its own icon, on the Watch page and the TV home. It opens in Brave on the TV
-(with Brave's ad blocking), or the usual browser without Brave. Delete it from the same place.
+(with Brave's ad blocking), or the usual browser without Brave. Delete it from the same place. Sites pinned with Brave's (or any browser's) "Add to Home
+screen" on the TV phone show up as tiles by themselves (read with root from Android's shortcut
+service), with the icon they were pinned with.
 
 **Updating Couch Phone:** the TV's "Connect a remote" screen (and the remote's TV sheet) shows
 when a newer release is out on GitHub. OK (or Update) downloads it and installs it with root;

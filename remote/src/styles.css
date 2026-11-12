@@ -692,3 +692,4 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .site-form input { height: 48px; border-radius: 16px; padding: 0 16px; border: 0; font: inherit; font-size: 16px; color: var(--ink); background: rgba(255, 255, 255, 0.1); }
 .site-form .pill { display: flex; align-items: center; justify-content: center; gap: 8px; flex: none; }
 .sites-edit h3.add-head { padding-left: 0; padding-right: 0; }
+.site-pinned { flex: none; font-size: 13px; color: var(--ink-2); padding-right: 6px; }
