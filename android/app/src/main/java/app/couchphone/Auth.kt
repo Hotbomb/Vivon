@@ -59,12 +59,8 @@ object Auth {
     fun valid(token: String?): Boolean {
         if (token.isNullOrEmpty()) return false
         if (MessageDigest.isEqual(token.toByteArray(), internalToken.toByteArray())) return true
-        val h = sha(token)
-        val list = tokens()
-        for (i in 0 until list.length()) {
-            if (MessageDigest.isEqual(list.getJSONObject(i).optString("hash").toByteArray(), h.toByteArray())) return true
-        }
-        return false
+        val h = sha(token).toByteArray()
+        return knownHashes().any { MessageDigest.isEqual(it, h) }
     }
 
     fun phoneCount() = tokens().length()
@@ -72,6 +68,19 @@ object Auth {
     fun forgetAll() = Store.putStr("tokens", "[]")
 
     private fun tokens(): JSONArray = Store.str("tokens")?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
+
+    // Every request checks its token: the paired phones' hashes, read again only when the list changes.
+    @Volatile private var hashesFor: String? = null
+    @Volatile private var hashes: List<ByteArray> = emptyList()
+    private fun knownHashes(): List<ByteArray> {
+        val raw = Store.str("tokens")
+        if (raw != hashesFor) {
+            val l = tokens()
+            hashes = (0 until l.length()).map { l.getJSONObject(it).optString("hash").toByteArray() }
+            hashesFor = raw
+        }
+        return hashes
+    }
 
     private fun hex(n: Int) = ByteArray(n).also { rnd.nextBytes(it) }.joinToString("") { "%02x".format(it) }
     private fun sha(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }

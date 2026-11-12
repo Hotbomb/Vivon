@@ -20,10 +20,16 @@ import java.util.concurrent.TimeUnit
  * Only this phone and devices on the same Wi-Fi network get an answer (App.allowedClient).
  * Every /api call needs a token from pairing except /api/health and /api/pair*.
  */
-class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
+class Server(private val ctx: Context, port: Int, private val secure: Boolean = false) : NanoWSD(port) {
     private val assets = ctx.assets
 
-    override fun useGzipWhenAccepted(r: Response) = false   // gzip would hold back server-sent events
+    // Text files are sent compressed (the remote's script is a third of its size gzipped); never the
+    // server-sent events, which gzip would hold back, nor pictures, which are compressed already.
+    override fun useGzipWhenAccepted(r: Response): Boolean {
+        val m = r.mimeType ?: return false
+        return !m.startsWith("text/event-stream") && (m.startsWith("text/") || m.startsWith("application/javascript") ||
+            m.startsWith("application/json") || m.startsWith("image/svg") || m.startsWith("application/manifest"))
+    }
 
     override fun serve(session: IHTTPSession): Response {
         // Local Wi-Fi only: anything else (mobile data, VPNs, other networks) gets nothing.
@@ -43,6 +49,17 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         when {
             uri.startsWith("/api/") -> api(s)
             uri.startsWith("/ontv/") -> asset("www/ontv/" + uri.removePrefix("/ontv/"))
+            // The secure remote's root certificate, for phones to trust (see Tls.kt). Public by design.
+            uri == "/couch-phone.crt" -> newFixedLengthResponse(Response.Status.OK, "application/x-x509-ca-cert",
+                java.io.ByteArrayInputStream(Tls.caDer()), Tls.caDer().size.toLong()).apply { addHeader("Content-Disposition", "attachment; filename=\"couch-phone.crt\"") }
+            uri == "/couch-phone.mobileconfig" -> Tls.mobileconfig().toByteArray().let {
+                newFixedLengthResponse(Response.Status.OK, "application/x-apple-aspen-config", java.io.ByteArrayInputStream(it), it.size.toLong())
+                    .apply { addHeader("Content-Disposition", "attachment; filename=\"couch-phone.mobileconfig\"") } }
+            // The Couch Remote Android app, built with this version and kept inside it (see build.gradle.kts).
+            uri == "/couch-remote.apk" -> if (exists("remote-app/couch-remote.apk"))
+                newChunkedResponse(Response.Status.OK, "application/vnd.android.package-archive", assets.open("remote-app/couch-remote.apk"))
+                    .apply { addHeader("Content-Disposition", "attachment; filename=\"couch-remote.apk\"") }
+                else newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "The Android app is not in this build.")
             uri == "/tv" -> redirect("/tv/")
             uri == "/tv/config.js" -> newFixedLengthResponse(Response.Status.OK, "application/javascript",
                 "window.COUCH_CONFIG = " + Store.publicConfig() + ";\n").noCache()
@@ -112,6 +129,8 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             }
         }
         if (!authed(s)) return json(401, err("pair this phone first: open this page on your phone and type the code from the TV"))
+        // An app's own icon, as a PNG (cached), for the remote's Watch page and the TV home.
+        if (m == Method.GET && path.startsWith("/api/app-icon/")) return Icons.response(path.removePrefix("/api/app-icon/"))
 
         return when ("$m $path") {
             "GET /api/now" -> json(200, Now.payload())
@@ -123,12 +142,43 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "POST /api/key" -> {
                 val b = body(s)
                 val key = b.optString("key").ifEmpty { throw ApiError(400, "key is required") }
-                json(200, ok().put("key", Tv.key(key, b.optBoolean("hold"))))
+                json(200, ok().put("key", Tv.key(key, b.optBoolean("hold"), b.optBoolean("raw"))))
             }
             "POST /api/text" -> {
                 val t = body(s).optString("text").ifEmpty { throw ApiError(400, "text is required") }
                 Tv.text(t); json(200, ok())
             }
+            "POST /api/shortcut" -> { Tv.shortcut(body(s).optString("name")); json(200, ok()) }
+            "POST /api/open-url" -> { val u = Tv.openUrl(body(s).optString("url")); json(200, ok().put("url", u)) }
+            "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
+            // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
+            "GET /api/connect" -> json(200, connectInfo())
+            // Website tiles: {"action":"add","name":"Cinejoy","url":"cinejoy.pk"}, {"action":"remove","id":"site:cinejoy"},
+            // {"action":"set","id":"site:cinejoy","opens":"couch|browser"}
+            "GET /api/sites" -> json(200, ok().put("sites", JSONArray(Sites.list().map { it.json().put("id", it.id) })))
+            "POST /api/sites" -> {
+                val b = body(s)
+                when (b.optString("action")) {
+                    "add" -> { val site = Sites.add(b.optString("name"), b.optString("url")); refreshHomeAfter(s); json(200, ok().put("site", site.json().put("id", site.id))) }
+                    "remove" -> { Sites.remove(b.optString("id")); refreshHomeAfter(s); json(200, ok()) }
+                    "set" -> { Sites.setOpens(b.optString("id"), b.optString("opens")); json(200, ok()) }
+                    else -> throw ApiError(400, "action must be add or remove")
+                }
+            }
+            // Updating Couch Phone itself from the newest release on GitHub (Updater.kt).
+            "GET /api/update" -> json(200, ok(Updater.summary()))
+            "POST /api/update" -> json(200, ok(Updater.start()))
+            "GET /api/battery" -> json(200, ok(App.battery()))
+            "GET /api/display" -> json(200, ok(TvScreen.describe()))
+            "POST /api/display" -> { TvScreen.set(body(s)); json(200, ok(TvScreen.describe())) }
+            // Where the secure remote is (air mouse and speak need https), and whether this page is on it.
+            "GET /api/secure" -> json(200, ok().put("secure", secure).put("port", Tls.port)
+                .put("url", App.lanAddress()?.let { "https://$it:${Tls.port}/" } ?: JSONObject.NULL)
+                .put("android_cert", "/couch-phone.crt").put("ios_profile", "/couch-phone.mobileconfig"))
+            "GET /api/bluetooth" -> json(200, ok(Bt.state()))
+            "POST /api/bluetooth" -> json(200, ok(Bt.act(body(s))))
+            "GET /api/wifi" -> json(200, ok(Wifi.state()))
+            "POST /api/wifi" -> json(200, ok(Wifi.act(body(s))))
             "GET /api/apps" -> json(200, ok().put("apps", appList()))
             "POST /api/launch" -> launch(body(s).optString("app"))
             "POST /api/volume" -> volume(body(s))
@@ -139,6 +189,18 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
                 json(200, ok())
             }
             "GET /api/app-order" -> json(200, appOrder())
+            // The remote's Watch page: its own order and hidden apps (dragged and edited on the phone).
+            "GET /api/remote-apps" -> json(200, ok(Store.readJson("remote-apps.json") as? JSONObject ?: JSONObject().put("order", JSONArray()).put("hidden", JSONArray())).put("saved", Store.readJson("remote-apps.json") != null))
+            "POST /api/remote-apps" -> {
+                val b = body(s)
+                // app packages, and website tiles ("site:cinejoy", "site:pin-1a2b3c4d5e")
+                fun pkgs(k: String) = JSONArray().also { out -> b.optJSONArray(k)?.let { a -> for (i in 0 until minOf(a.length(), 400)) a.optString(i).takeIf { Regex("[A-Za-z0-9_.]{1,200}|site:[a-z0-9-]{1,64}").matches(it) }?.let { out.put(it) } } }
+                val saved = JSONObject().put("order", pkgs("order")).put("hidden", pkgs("hidden"))
+                Store.writeJson("remote-apps.json", saved)
+                json(200, ok(saved).put("saved", true))
+            }
+            // Puts any installed app on the home's dock (the end of it), unhiding it if it was hidden.
+            "POST /api/home-add" -> { homeAdd(body(s).optString("package")); refreshHomeAfter(s); json(200, appOrder()) }
             "POST /api/app-order" -> {
                 val b = body(s)
                 val order = b.optJSONArray("order") ?: throw ApiError(400, "order must be a list of app packages")
@@ -154,7 +216,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/settings" -> json(200, settings())
             "POST /api/settings" -> { saveSettings(body(s)); refreshHomeAfter(s); json(200, settings()) }
             "GET /api/home" -> json(200, ok().put("on", App.homeEnabled(App.instance)).put("held", HomeRole.held(App.instance)).put("dex", JSONObject(Dex.describe())))
-            "POST /api/home/open" -> { Thread { Dex.openHome() }.start(); json(200, ok()) }
+            "POST /api/home/open" -> { Thread { Tv.pauseBrowser(); Dex.openHome() }.start(); json(200, ok()) }
             "GET /api/root" -> json(200, ok(JSONObject(Root.status())).put("dex", JSONObject(Dex.describe())))
             "POST /api/phones/forget" -> { Auth.forgetAll(); json(200, ok().put("note", "Every phone must pair again.")) }
             // Not in couch-phone (yet): answer the way couch-tv's remote and home expect for "nothing here".
@@ -162,11 +224,18 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
             "GET /api/continue" -> json(200, ok().put("items", JSONArray()))
             "GET /api/history" -> json(200, ok().put("items", JSONArray()))
             "GET /api/music" -> json(200, ok().put("music", JSONObject.NULL))
-            "GET /api/sleep" -> json(200, ok().put("ends", JSONObject.NULL))
             "GET /api/picture" -> json(200, ok().put("mode", JSONObject.NULL).put("supported", false).put("can_set", false))
             "GET /api/screens" -> json(200, ok().put("screens", JSONArray()))
             "POST /api/watch-next" -> json(200, ok())
-            "POST /api/ask", "POST /api/play", "GET /api/find", "POST /api/sleep", "POST /api/picture", "POST /api/power" ->
+            // Power: the TV's picture off and on (TvScreen.setTvOff); the sleep timer turns it off later.
+            "POST /api/power" -> {
+                val st = body(s).optString("state", "toggle")
+                TvScreen.setTvOff(when (st) { "off" -> true; "on" -> false; "toggle" -> !TvScreen.tvOff; else -> throw ApiError(400, "state must be on, off or toggle") })
+                json(200, ok().put("power", if (TvScreen.tvOff) "off" else "on"))
+            }
+            "GET /api/sleep" -> json(200, ok().put("ends", if (TvScreen.sleepEnds > 0) Now.iso(TvScreen.sleepEnds) else JSONObject.NULL))
+            "POST /api/sleep" -> { TvScreen.setSleep(body(s).optInt("minutes")); json(200, ok().put("ends", if (TvScreen.sleepEnds > 0) Now.iso(TvScreen.sleepEnds) else JSONObject.NULL)) }
+            "POST /api/ask", "POST /api/play", "GET /api/find", "POST /api/picture" ->
                 json(501, err("Not in Couch Phone."))
             else -> json(404, err("no such endpoint: $m $path"))
         }
@@ -178,18 +247,33 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         val arr = JSONArray()
         Tv.launchables().map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
             .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, name) -> arr.put(JSONObject().put("id", pkg).put("name", name).put("package", pkg).put("colour", "#2A2A30").put("installed", true)) }
+            .forEach { (pkg, name) -> arr.put(JSONObject().put("id", pkg).put("name", name).put("package", pkg).put("colour", "#2A2A30").put("installed", true)
+                .put("icon", "/api/app-icon/$pkg")) }
+        // website tiles (Sites.kt), listed like apps
+        Sites.list().forEach { site -> arr.put(JSONObject().put("id", site.id).put("name", site.name).put("package", site.id).put("colour", "#2A2A30")
+            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url).put("pinned", site.pinned).put("opens", Sites.opens(site.slug))) }
         return arr
     }
 
     private fun launch(target: String): Response {
         if (target.isEmpty()) throw ApiError(400, "app is required")
         if (target == "home" || target == BuildConfig.APPLICATION_ID) {
+            Tv.pauseBrowser()
             Dex.openHome()
             return json(200, ok().put("app", Now.describe(BuildConfig.APPLICATION_ID)))
         }
         if (target == "settings") return launch("com.android.settings")
+        // a website tile: the site in Brave on the TV
+        if (target.startsWith(Sites.PREFIX)) { Tv.pauseBrowser(); Sites.open(target); return json(200, ok()) }
+        // Android's own Bluetooth and Wi-Fi screens (the TV home's fallback for anything its panels cannot do)
+        val screen = mapOf("bluetooth" to "android.settings.BLUETOOTH_SETTINGS", "network" to "android.settings.WIFI_SETTINGS",
+            "wifi" to "android.settings.WIFI_SETTINGS")[target]
+        if (screen != null) {
+            if (!Dex.openAction(screen)) throw ApiError(500, "Could not open the settings screen.")
+            return json(200, ok().put("app", Now.describe("com.android.settings")))
+        }
         if (!Regex("[A-Za-z0-9_.]+").matches(target) || !Tv.hasPackage(target)) throw ApiError(404, "$target is not installed")
+        Tv.pauseBrowser(except = target)
         if (!Dex.launchPackage(target)) throw ApiError(404, "${Tv.label(target)} has no screen to open")
         Now.push()
         return json(200, ok().put("app", Now.describe(target)))
@@ -206,6 +290,55 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         }
         Now.push()
         return json(200, ok().put("volume", JSONObject(Tv.volume())))
+    }
+
+    /**
+     * For the TV's "Connect a remote" screen: the remote's address with a pairing code in it (one
+     * scan opens the remote already paired, see android/web/shim.js), and the Android app's address.
+     */
+    private fun connectInfo(): JSONObject {
+        val ip = App.lanAddress() ?: throw ApiError(503, "This phone is not on Wi-Fi.")
+        val base = "http://$ip:${Store.port}/"
+        val pin = Auth.currentPin() ?: Auth.newPin()
+        val app = exists("remote-app/couch-remote.apk")
+        // The fingerprint of this TV's certificate authority: the Couch Remote app checks the one it
+        // fetches against it, so nobody else on the Wi-Fi can slip in their own.
+        val fp = java.security.MessageDigest.getInstance("SHA-256").digest(Tls.caDer()).joinToString("") { "%02x".format(it) }
+        val o = ok().put("url", base).put("pin", pin).put("qr_remote", Qr.svg("${base}#cpin=$pin&cafp=$fp")).put("app", app)
+        if (app) o.put("app_url", "${base}couch-remote.apk").put("qr_app", Qr.svg("${base}couch-remote.apk"))
+        o.put("update", Updater.summary())
+        return o
+    }
+
+    private fun homeAdd(pkg: String) {
+        val site = pkg.startsWith(Sites.PREFIX)
+        if (site) { if (Sites.find(pkg) == null) throw ApiError(404, "That website tile is gone.") }
+        else if (!Regex("[A-Za-z0-9_.]+").matches(pkg) || !Tv.hasPackage(pkg)) throw ApiError(404, "$pkg is not installed")
+        // 1. not hidden any more
+        val st = Store.readJson("home-settings.json") as? JSONObject ?: JSONObject()
+        st.optJSONArray("hidden_apps")?.let { h ->
+            val keep = JSONArray(); for (i in 0 until h.length()) if (h.optString(i) != pkg) keep.put(h.opt(i))
+            if (keep.length() != h.length()) { st.put("hidden_apps", keep); Store.writeJson("home-settings.json", st); Store.putStr("home_settings_updated", Now.iso()) }
+        }
+        // 2. one of the apps the order knows about (the TV reports its list; a hidden app was left out of it)
+        val known = Store.readJson("home-apps.json") as? JSONObject ?: JSONObject().put("apps", JSONArray()).put("line", 10)
+        val apps = known.optJSONArray("apps") ?: JSONArray().also { known.put("apps", it) }
+        if ((0 until apps.length()).none { apps.optJSONObject(it)?.optString("package") == pkg }) {
+            apps.put(JSONObject().put("package", pkg).put("name", if (site) Sites.find(pkg)?.name ?: pkg else Tv.label(pkg)))
+            Store.writeJson("home-apps.json", known)
+        }
+        // 3. on the dock: the end of it, or its last place when it is full (that app moves behind More apps)
+        val cur = appOrder()
+        val list = cur.getJSONArray("apps")
+        val order = ArrayList<String>(); for (i in 0 until list.length()) list.getJSONObject(i).optString("package").let { if (it != pkg) order += it }
+        var line = cur.optInt("line")
+        val i0 = (0 until list.length()).indexOfFirst { list.getJSONObject(it).optString("package") == pkg }
+        if (i0 in 0 until line) order.add(i0, pkg)   // already on the dock: it stays where it is
+        else {
+            line = line.coerceAtMost(order.size)
+            if (line < 10) { order.add(line, pkg); line += 1 } else order.add(9, pkg)
+        }
+        Store.writeJson("app-order.json", JSONObject().put("order", JSONArray(order)).put("line", line.coerceIn(0, 10)))
     }
 
     private fun appOrder(): JSONObject {
@@ -229,6 +362,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         .put("phones", Auth.phoneCount()).put("port", Store.port)
         .put("root", JSONObject(Root.status())).put("dex", JSONObject(Dex.describe()))
         .put("open_on_dex", Store.bool("open_on_dex", true)).put("apps_full_screen", Store.bool("apps_full_screen", true))
+        .put("hide_taskbar", Store.bool("hide_taskbar", true)).put("taskbar", Dex.taskbarNote ?: JSONObject.NULL)
 
     /** {"people": [...]} replaces the list; {"order": [ids]} only reorders it. */
     private fun savePeople(b: JSONObject) {
@@ -265,6 +399,7 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
         b.optString("tv_name").trim().takeIf { it.isNotEmpty() }?.let { Store.putStr("tv_name", it.take(30)) }
         if (b.has("open_on_dex")) Store.putBool("open_on_dex", b.optBoolean("open_on_dex"))
         if (b.has("apps_full_screen")) Store.putBool("apps_full_screen", b.optBoolean("apps_full_screen"))
+        if (b.has("hide_taskbar")) { Store.putBool("hide_taskbar", b.optBoolean("hide_taskbar")); Thread { runCatching { Dex.applyTaskbar() } }.start() }
     }
 
     // ---------------------------------------------------------------- server-sent events
@@ -302,17 +437,42 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
      */
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
         private val fn: (String) -> Unit = { runCatching { send(JSONObject(it).put("event", "now").toString()) } }
-        override fun onOpen() { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } }
-        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn) }
+        /** The game controller this remote plays with (Gamepad.kt), null for none yet. */
+        @Volatile private var player: Gamepad.Player? = null
+        @Volatile private var padRetryAt = 0L
+        // A controller-only socket (?pad=1) does not need the now playing updates.
+        private val padOnly = h.parameters["pad"]?.firstOrNull() == "1"
+        private fun unplug() { player?.let { Gamepad.leave(it) }; player = null }
+        override fun onOpen() { if (!padOnly) { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } } }
+        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn); unplug() }
         override fun onPong(pong: NanoWSD.WebSocketFrame?) {}
-        override fun onException(e: IOException?) { Now.unlisten(fn) }
+        override fun onException(e: IOException?) { Now.unlisten(fn); unplug() }
         override fun onMessage(frame: NanoWSD.WebSocketFrame) {
             val reply = try {
                 val m = JSONObject(frame.textPayload)
                 when {
-                    m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold")); JSONObject().put("ok", true).put("key", m.getString("key")) }
+                    // keys from the remote's open socket: no answer unless something went wrong (then the catch below)
+                    m.has("key") -> { Tv.key(m.getString("key"), m.optBoolean("hold"), m.optBoolean("raw")); return }
                     m.has("volume") -> { volume(JSONObject().put("action", m.getString("volume"))); JSONObject().put("ok", true) }
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
+                    // The air mouse sends many small moves: no answer for those, to keep the socket quiet.
+                    m.has("pointer") -> { Pointer.handle(m.getJSONObject("pointer")); if (m.optBoolean("quiet")) return; JSONObject().put("ok", true) }
+                    // The remote's Controller screen: the first message plugs a controller in (player 1-4),
+                    // then each change of the sticks and buttons; {"pad": false} unplugs it.
+                    m.has("pad") -> {
+                        val st = m.optJSONObject("pad")
+                        if (st == null) { unplug(); JSONObject().put("ok", true).put("player", 0) }
+                        else {
+                            val first = player == null
+                            // a controller that did not start is not tried again on every stick move
+                            if (first && System.currentTimeMillis() < padRetryAt) return
+                            val p = player ?: try { Gamepad.join().also { player = it } }
+                                catch (e: ApiError) { padRetryAt = System.currentTimeMillis() + 10_000; throw e }
+                            Gamepad.state(p, st)
+                            if (!first) return
+                            JSONObject().put("ok", true).put("player", p.n)
+                        }
+                    }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")
                 }
             } catch (e: ApiError) { JSONObject().put("ok", false).put("error", e.message).put("status", e.status) }
@@ -344,7 +504,12 @@ class Server(private val ctx: Context, port: Int) : NanoWSD(port) {
 
     private fun asset(path: String): Response = try {
         val stream = assets.open(path)
-        newChunkedResponse(Response.Status.OK, mime(path), stream).noCache()
+        val r = newChunkedResponse(Response.Status.OK, mime(path), stream)
+        // The remote's built files carry their content's hash in the name (index-C01TOrwX.js): a phone
+        // keeps them for good and opens the remote at once next time. Everything else is asked again.
+        if (Regex("/assets/[^/]+-[A-Za-z0-9_-]{8,}\\.(js|css|woff2|png|svg|webp)$").containsMatchIn(path))
+            r.apply { addHeader("Cache-Control", "public, max-age=31536000, immutable") }
+        else r.noCache()
     } catch (e: IOException) { newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found") }
 
     private fun mime(p: String) = when (p.substringAfterLast('.').lowercase()) {

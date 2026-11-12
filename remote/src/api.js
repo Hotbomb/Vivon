@@ -1,3 +1,5 @@
+import * as chan from './channel.js';
+
 // Thin client for the bridge (../../bridge/API.md). Relative URLs, so it works from any phone at home.
 
 export class ApiError extends Error {
@@ -96,10 +98,29 @@ export const api = {
   config: () => call('GET', '/api/config'),
   screens: () => call('GET', '/api/screens'),
   sleep: () => call('GET', '/api/sleep'),
-  key: (key, hold = false) => call('POST', '/api/key', hold ? { key, hold: true } : { key }),
+  // raw: an arrow from the Keyboard moves the caret even in a browser (not the TV's pointer)
+  // Couch Phone: over the open socket (channel.js) at once and in order; HTTP when there is none.
+  key: (key, hold = false, raw = false) => (chan.send({ key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) })
+    ? Promise.resolve({ ok: true, key })
+    : call('POST', '/api/key', { key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) })),
   text: (text) => call('POST', '/api/text', { text }),
   launch: (app) => call('POST', '/api/launch', { app }),
   pointer: (d) => call('POST', '/api/pointer', d, 5000),
+  display: () => call('GET', '/api/display'),
+  shortcut: (name) => call('POST', '/api/shortcut', { name }),
+  update: () => call('GET', '/api/update'),
+  remoteApps: () => call('GET', '/api/remote-apps'),
+  addSite: (name, url) => call('POST', '/api/sites', { action: 'add', name, url }, 20000),
+  removeSite: (id) => call('POST', '/api/sites', { action: 'remove', id }),
+  setSiteOpens: (id, opens) => call('POST', '/api/sites', { action: 'set', id, opens }),
+  saveRemoteApps: (order, hidden) => call('POST', '/api/remote-apps', { order, hidden }),
+  startUpdate: () => call('POST', '/api/update', {}, 30000),
+  openUrl: (url) => call('POST', '/api/open-url', { url }, 20000),
+  bluetooth: () => call('GET', '/api/bluetooth'),
+  bluetoothAct: (d) => call('POST', '/api/bluetooth', d, 25000),
+  wifi: () => call('GET', '/api/wifi', undefined, 20000),
+  wifiAct: (d) => call('POST', '/api/wifi', d, 30000),
+  setDisplay: (d) => call('POST', '/api/display', d, 15000),
   play: (show, who) => call('POST', '/api/play', { ...show, who }, 60000),
   ask: (text, who) => call('POST', '/api/ask', { text, who }, 90000),
   power: (state) => call('POST', '/api/power', { state }, 40000),
@@ -110,11 +131,13 @@ export const api = {
   picture: (mode) => call('POST', '/api/picture', { mode }, 20000),   // a picture switch can take several seconds
   appOrder: () => call('GET', '/api/app-order'),
   saveAppOrder: (order, line) => call('POST', '/api/app-order', { order, line }),
+  homeAdd: (pkg) => call('POST', '/api/home-add', { package: pkg }),
   getPicture: () => call('GET', '/api/picture'),
   people: () => call('GET', '/api/people'),
   savePeople: (people) => call('POST', '/api/people', { people }),
   settings: () => call('GET', '/api/settings'),   // the TV home's Home settings (its language)
   health: () => call('GET', '/api/health'),
+  secure: () => call('GET', '/api/secure'),   // Couch Phone: the remote's https address
   pair: (key) => call('POST', '/api/pair', { key }),
 };
 

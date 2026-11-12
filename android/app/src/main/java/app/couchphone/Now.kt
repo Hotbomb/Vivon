@@ -37,17 +37,19 @@ object Now {
     fun payload(): JSONObject = JSONObject()
         .put("ok", true)
         .put("tv_connected", true)       // the server is on the phone that drives the TV: if it answers, it is there
-        .put("power", "on")
+        .put("power", if (TvScreen.tvOff) "off" else "on")
         .put("app", describe(front) ?: JSONObject.NULL)
         .put("volume", JSONObject(Tv.volume()))
         .put("playing", JSONObject.NULL)
-        .put("sleep", JSONObject().put("ends", JSONObject.NULL))
+        .put("sleep", JSONObject().put("ends", if (TvScreen.sleepEnds > 0) iso(TvScreen.sleepEnds) else JSONObject.NULL))
         .put("waking", false)
         .put("who", who ?: JSONObject.NULL)
         .put("picture", JSONObject.NULL)
         .put("mode", "on-tv")
         .put("dex", Dex.tvDisplay() != null)
         .put("root", Root.available == true)
+        // a text box is picked on the TV (TypingWatch): the remote opens its keyboard
+        .put("typing", Typing.on).put("typing_since", Typing.since)
 
     fun push() {
         val msg = payload().toString()
@@ -61,7 +63,7 @@ object Now {
         loop.scheduleWithFixedDelay({
             try {
                 if (listeners.isEmpty()) return@scheduleWithFixedDelay
-                front = Tv.frontPackage()
+                front = Tv.frontCached()
                 val p = payload(); val sig = p.toString()
                 if (sig != lastSig) { lastSig = sig; listeners.forEach { runCatching { it(sig) } } }
             } catch (_: Exception) {}

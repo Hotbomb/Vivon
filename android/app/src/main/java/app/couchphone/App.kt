@@ -29,7 +29,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        Store.init(this); Root.init(this); Tv.init(this); Dex.init(this)
+        Store.init(this); Root.init(this); Tv.init(this); Dex.init(this); TvScreen.init(this); Cursor.init(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumed++ }
             override fun onActivityPaused(a: Activity) { resumed-- }
@@ -100,6 +100,18 @@ class App : Application() {
             return (n(v4) and mask) == (n(mine) and mask)
         }
 
+        /** The phone's battery: {"level": 0-100, "charging": true}. */
+        fun battery(): org.json.JSONObject {
+            val i = instance.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                ?: return org.json.JSONObject().put("level", org.json.JSONObject.NULL)
+            val level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+            val status = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            return org.json.JSONObject().put("level", if (level < 0) org.json.JSONObject.NULL else Math.round(level * 100f / scale))
+                .put("charging", charging).put("plugged", i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0)
+        }
+
         fun homeEnabled(c: Context) = c.packageManager.getComponentEnabledSetting(ComponentName(c, "${c.packageName}.HomeAlias")) !=
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED
 
@@ -111,7 +123,9 @@ class App : Application() {
 /** Keeps the web server and the DeX watch running. Started at boot, when the app opens, and after an update. */
 class BridgeService : Service() {
     private var server: Server? = null
+    private var secureServer: Server? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var lowLatency: WifiManager.WifiLock? = null
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -128,9 +142,12 @@ class BridgeService : Service() {
         val wm = applicationContext.getSystemService(WifiManager::class.java)
         @Suppress("DEPRECATION")
         wifiLock = runCatching { wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "couchphone").apply { acquire() } }.getOrNull()
+        // Low latency Wi-Fi (no power-save batching), for the remote's pointer and controller.
+        lowLatency = runCatching { wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "couchphone-low-latency").apply { acquire() } }.getOrNull()
         startServer()
         Now.start()
         Dex.watch()
+        TvScreen.watch()
         Thread { rootSetup() }.start()
     }
 
@@ -141,9 +158,23 @@ class BridgeService : Service() {
     private fun rootSetup() {
         if (!Root.openShell()) return
         val p = packageName
+        // MediaWatch: to see (and pause) the browser's player only, never other apps' music
+        Root.shOrNull("cmd notification allow_listener $p/$p.MediaWatch 2>&1")
+        // TypingWatch (the remote's keyboard opens by itself for a text box on the TV), added to any
+        // accessibility services already on, never replacing them
+        if (Store.bool("auto_keyboard", true)) {
+            val svc = "$p/$p.TypingWatch"
+            Root.shOrNull("cur=\$(settings get secure enabled_accessibility_services); " +
+                "case \"\$cur\" in *$svc*) ;; null|'') settings put secure enabled_accessibility_services $svc ;; " +
+                "*) settings put secure enabled_accessibility_services \"\$cur:$svc\" ;; esac; settings put secure accessibility_enabled 1")
+        }
+        // the app in front, from Android's usage records (Tv.frontPackage): fast, no root per key
+        Root.shOrNull("appops set $p GET_USAGE_STATS allow 2>&1")
         Root.shOrNull("appops set $p SYSTEM_ALERT_WINDOW allow; dumpsys deviceidle whitelist +$p; " +
             "cmd appops set $p RUN_ANY_IN_BACKGROUND allow; cmd appops set $p RUN_IN_BACKGROUND allow")
         RootInput.warmUp()
+        // Bluetooth: the permissions to list, find and pair devices (granted with root, no pop-ups).
+        Bt.grantPermissions()
         Now.push()
     }
 
@@ -152,14 +183,30 @@ class BridgeService : Service() {
         try {
             server = Server(this, Store.port).also { it.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false) }
             Log.i("couchphone", "server on port ${Store.port}")
+            Announce.start(this)
         } catch (e: Exception) { Log.e("couchphone", "server failed to start", e) }
+        // The same remote on https (port + 1), for the air mouse and speaking. Making the keys takes
+        // a moment, so it starts on its own thread.
+        Thread {
+            synchronized(this) {
+                if (secureServer != null) return@Thread
+                try {
+                    secureServer = Server(this, Tls.port, secure = true).also {
+                        it.makeSecure(Tls.serverSocketFactory(), null)
+                        it.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+                    }
+                    Log.i("couchphone", "secure server on port ${Tls.port}")
+                } catch (e: Exception) { Log.e("couchphone", "secure server failed to start", e) }
+            }
+        }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int { startServer(); return START_STICKY }
 
     override fun onDestroy() {
         server?.stop(); server = null
-        runCatching { wifiLock?.release() }
+        secureServer?.stop(); secureServer = null
+        runCatching { wifiLock?.release() }; runCatching { lowLatency?.release() }
         super.onDestroy()
     }
 }

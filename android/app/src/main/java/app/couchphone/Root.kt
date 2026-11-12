@@ -83,6 +83,57 @@ object Root {
         return out.toString()
     }
 
+    /**
+     * Starts a long-running root helper program: each command is tried in turn (with `exec`, so the
+     * helper is the su process itself) until one prints "ready". Its later output is logged. Returns
+     * the process and its input; throws with the helper's own words when none starts.
+     */
+    fun startHelper(commands: List<String>, tag: String): Pair<Process, OutputStreamWriter> {
+        if (!openShell()) throw IllegalStateException(lastError ?: "no root")
+        var why = "no answer"
+        for (cmd in commands) {
+            val p = ProcessBuilder("su").redirectErrorStream(true).start()
+            val w = OutputStreamWriter(p.outputStream)
+            // If exec itself fails, the shell carries on to the echo, so the answer comes at once.
+            w.write("$cmd; echo 'fail could not run the helper'\n"); w.flush()
+            val r = BufferedReader(InputStreamReader(p.inputStream))
+            var first: String? = null
+            val until = System.currentTimeMillis() + 10_000
+            while (System.currentTimeMillis() < until) {
+                if (r.ready()) { first = r.readLine(); if (first == "ready" || first?.startsWith("fail") == true) break }
+                else if (!p.isAlive) break
+                else Thread.sleep(10)
+            }
+            if (first == "ready") {
+                Thread { try { while (true) { val l = r.readLine() ?: break; Log.i(tag, "helper: $l") } } catch (_: Exception) {} }
+                    .apply { isDaemon = true }.start()
+                return Pair(p, w)
+            }
+            why = first ?: "no answer"
+            Log.w(tag, "helper did not start: $why")
+            p.destroy()
+        }
+        throw IllegalStateException(why)
+    }
+
+    /**
+     * A one-off root command in its own `su` process: long or slow work (an install, a big dump)
+     * that must not hold the shared shell, which every key press and launch also uses.
+     */
+    fun runOnce(cmd: String, timeoutMs: Long = 15_000): String? = try {
+        val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+        val out = StringBuilder()
+        val reader = Thread { runCatching { p.inputStream.bufferedReader().forEachLine { synchronized(out) { out.append(it).append('\n') } } } }
+        reader.isDaemon = true; reader.start()
+        if (!p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) { p.destroy(); null }
+        else { reader.join(2000); synchronized(out) { out.toString() } }
+    } catch (e: Exception) { Log.w(TAG, "runOnce", e); null }
+
+    /** The native helper's two ways to run: from the app's library folder, or a copy in /data/local/tmp. */
+    fun nativeCommands(bin: java.io.File, args: String = ""): List<String> = listOf(
+        "exec '${bin.absolutePath}' $args",
+        "cp '${bin.absolutePath}' /data/local/tmp/couchmouse && chmod 755 /data/local/tmp/couchmouse && exec /data/local/tmp/couchmouse $args")
+
     fun status(): Map<String, Any?> = mapOf("root" to available, "input" to RootInput.running, "error" to lastError)
 
     @Suppress("unused") private fun waitFor(p: Process, ms: Long) = p.waitFor(ms, TimeUnit.MILLISECONDS)
@@ -149,10 +200,24 @@ object RootInput {
         }
     }
 
-    fun key(code: Int, display: Int, longPress: Boolean = false) = helperSend("k $code $display ${if (longPress) 1 else 0}")
+    fun key(code: Int, display: Int, longPress: Boolean = false, meta: Int = 0) = helperSend("k $code $display ${if (longPress) 1 else 0} $meta")
 
     fun text(s: String, display: Int) =
         helperSend("t $display " + Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
+
+    /** Mouse events where Couch Phone's own pointer is (Cursor.kt); see root/Injector.java. */
+    fun mouseMove(d: Int, x: Float, y: Float) = helperSend("mm $d ${x.toInt()} ${y.toInt()}")
+    fun mouseButton(d: Int, x: Float, y: Float, button: Int, down: Boolean) = helperSend("mb $d ${x.toInt()} ${y.toInt()} $button ${if (down) 1 else 0}")
+    fun mouseWheel(d: Int, x: Float, y: Float, v: Float, h: Float) = helperSend("mw $d ${x.toInt()} ${y.toInt()} $v $h")
+
+    /** Media sound to a Bluetooth device (its address), or null: back to normal (the TV). */
+    fun audioOut(address: String?) = helperSend("ao ${address ?: "-"}")
+
+    /** The TV's picture (every display but the phone's own): off (true) or on. */
+    fun tvSignal(off: Boolean) = helperSend("x ${if (off) 0 else 2}")
+
+    /** The phone's own screen panel: off (true) or on. The TV is not affected. */
+    fun phonePanel(off: Boolean) = helperSend("s ${if (off) 0 else 2}")
 
     /** Starts root early (asks Magisk once) so the first remote press is fast. */
     fun warmUp() { Thread { runCatching { synchronized(this) { openHelper() } } }.start() }

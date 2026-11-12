@@ -7,6 +7,15 @@
   var token = null;
   try { token = localStorage.getItem(KEY); } catch (e) { /* private mode: the cookie still works */ }
   if (!token) { var m = document.cookie.match(/(?:^|; )couchtv_token=([^;]+)/); if (m) token = decodeURIComponent(m[1]); }
+  // Moving to the secure (https) remote: the plain one passes this phone's token in the link's
+  // #ctoken= part (never sent over the network), so the phone does not have to pair again.
+  var handed = location.hash.match(/[#&]ctoken=([0-9a-f]{16,128})/);
+  if (handed) {
+    token = handed[1];
+    try { localStorage.setItem(KEY, token); } catch (e) { }
+    document.cookie = 'couchtv_token=' + encodeURIComponent(token) + '; path=/; max-age=31536000; SameSite=Strict' + (location.protocol === 'https:' ? '; Secure' : '');
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
+  }
 
   function isApi(url) {
     try { var u = new URL(url, location.href); return u.origin === location.origin && u.pathname.indexOf('/api/') === 0; } catch (e) { return false; }
@@ -23,7 +32,7 @@
       init.headers = h;
     }
     return realFetch(input, init).then(function (r) {
-      if (r.status === 401 && isApi(url) && !isPair(url)) showPairing('This phone needs to pair with the TV again.');
+      if (r.status === 401 && isApi(url) && !isPair(url) && !autoPairing) showPairing('This phone needs to pair with the TV again.');
       return r;
     });
   };
@@ -45,8 +54,10 @@
   }
 
   var shown = false;
+  var autoPairing = false;   // a scanned code is being tried: the remote's own "not paired" answers wait for it
   function showPairing(why) {
-    if (shown) return; shown = true;
+    if (shown) { var p = document.querySelector('#ctv-pair p'); if (p && why) p.textContent = why; return; }
+    shown = true;
     var css = document.createElement('style');
     css.textContent = '#ctv-pair{position:fixed;top:0;right:0;bottom:0;left:0;z-index:99999;background:#0b0b0d;color:#f2ead8;display:flex;align-items:center;justify-content:center;padding:24px 16px;font:16px/1.4 -apple-system,system-ui,sans-serif}' +
       '#ctv-pair .box{width:100%;max-width:360px}#ctv-pair h1{font-size:26px;margin:0 0 8px}#ctv-pair p{color:#bdb6a7;margin:0 0 18px}' +
@@ -82,5 +93,27 @@
   }
 
   window.couchTv = { token: function () { return token; }, pair: showPairing };
+
+  // Scanned from the TV's "Connect a remote" screen: the link carries the pairing code
+  // (#cpin=123456, never sent over the network), so the phone pairs without typing it.
+  var scanned = location.hash.match(/[#&]cpin=(\d{6})/);
+  if (scanned) {
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
+    // Even with a token stored: it may be one the TV has forgotten. A scan always pairs afresh.
+    {
+      autoPairing = true;
+      var name = /CouchRemote/.test(navigator.userAgent) ? 'Couch Remote app' : /Android/.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Phone';
+      realFetch('/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin: scanned[1], name: name }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          autoPairing = false;
+          if (j.ok && j.token) { save(j.token); location.reload(); }
+          else if (token) { /* the stored token may still be good: the remote shows the code screen if not */ }
+          else showPairing((j.error || 'That code did not work.') + ' Type the code shown on the TV.');
+        })
+        .catch(function () { autoPairing = false; showPairing('Can’t reach the TV.'); });
+      return;
+    }
+  }
   if (!token) showPairing();
 })();

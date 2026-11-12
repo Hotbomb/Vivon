@@ -6,6 +6,7 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -20,8 +21,18 @@ import java.lang.reflect.Method;
  * Every event is stamped with a display id, so it goes to the DeX screen, not the phone's own.
  *
  * Commands:
- *   k <keycode> <display> <0|1 long press>
+ *   k <keycode> <display> <0|1 long press> [meta state, e.g. 4096 for Ctrl]
  *   t <display> <text as base64 UTF-8>
+ *   s <0|2>                 the phone's own screen panel off (0) or on (2), the way scrcpy's
+ *                           "turn screen off" does it: the phone stays awake and the TV keeps going
+ *   mm <display> <x> <y>    the mouse moves to x, y (a hover, or a drag while a button is down)
+ *   mb <display> <x> <y> <1 left|2 right|4 middle> <1 down|0 up>
+ *   mw <display> <x> <y> <v> <h>   the wheel: v up (+) or down (-), h right (+) or left (-), in clicks
+ *   x <0|2>                 the TV (every display but the phone's own) off (0) or on (2): the signal
+ *                           stops, so the TV shows "no signal" and can go to standby by itself
+ *   ao <address|->          media sound to that Bluetooth device (its address), or "-" back to normal
+ *                           (the TV): AudioService's preferred device for the media strategy, which
+ *                           needs a system permission root has
  *   p                       answers "pong"
  *
  * Original code for couch-phone. Nothing here is copied from another project.
@@ -69,7 +80,25 @@ public final class Injector {
                 System.out.flush();
                 break;
             case "k":
-                key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]));
+                key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]), p.length > 4 ? Integer.parseInt(p[4]) : 0);
+                break;
+            case "mm":
+                mouseMove(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]));
+                break;
+            case "mb":
+                mouseButton(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]), Integer.parseInt(p[4]), "1".equals(p[5]));
+                break;
+            case "mw":
+                mouseWheel(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]), Float.parseFloat(p[4]), Float.parseFloat(p[5]));
+                break;
+            case "s":
+                screen(Integer.parseInt(p[1]));
+                break;
+            case "x":
+                external(Integer.parseInt(p[1]));
+                break;
+            case "ao":
+                audioOut(p.length > 1 ? p[1] : "-");
                 break;
             case "t":
                 text(Integer.parseInt(p[1]), new String(Base64.decode(p.length > 2 ? p[2] : "", Base64.DEFAULT), "UTF-8"));
@@ -85,19 +114,190 @@ public final class Injector {
         inject.invoke(inputManager, e, MODE_ASYNC);
     }
 
-    private static KeyEvent ev(long down, long now, int action, int code, int repeat, int flags) {
-        return new KeyEvent(down, now, action, code, repeat, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+    private static KeyEvent ev(long down, long now, int action, int code, int repeat, int flags, int meta) {
+        return new KeyEvent(down, now, action, code, repeat, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
                 flags | KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD);
     }
 
-    private static void key(int code, int display, boolean longPress) throws Exception {
+    // The modifier keys a shortcut can hold: Ctrl, Alt and Shift, with the meta state each one sets.
+    private static final int[][] MODS = {
+        { KeyEvent.META_CTRL_ON, KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON },
+        { KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON },
+        { KeyEvent.META_SHIFT_ON, KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.META_SHIFT_ON | KeyEvent.META_SHIFT_LEFT_ON },
+    };
+
+    /**
+     * A key press. With Ctrl, Alt or Shift in meta (paste is Ctrl+V, Chrome's forward is Alt+Right),
+     * those keys themselves go down first and come up last, as on a real keyboard.
+     */
+    private static void key(int code, int display, boolean longPress, int meta) throws Exception {
         long down = SystemClock.uptimeMillis();
-        send(ev(down, down, KeyEvent.ACTION_DOWN, code, 0, 0), display);
+        int held = 0;
+        for (int[] m : MODS) {
+            if ((meta & m[0]) == 0) continue;
+            held |= m[2];
+            send(ev(down, down, KeyEvent.ACTION_DOWN, m[1], 0, 0, held), display);
+        }
+        send(ev(down, down, KeyEvent.ACTION_DOWN, code, 0, 0, meta), display);
         if (longPress) {
             Thread.sleep(600);
-            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, code, 1, KeyEvent.FLAG_LONG_PRESS), display);
+            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, code, 1, KeyEvent.FLAG_LONG_PRESS, meta), display);
         }
-        send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0), display);
+        send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, meta), display);
+        for (int i = MODS.length - 1; i >= 0; i--) {
+            int[] m = MODS[i];
+            if ((meta & m[0]) == 0) continue;
+            held &= ~m[2];
+            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, m[1], 0, 0, held), display);
+        }
+    }
+
+    // ---------------------------------------------------------------- the mouse
+    // Couch Phone draws its own pointer on the TV (Cursor.kt) and sends real mouse events where it
+    // is, so hover, clicks, right clicks, drags and the wheel work in Chrome and every other app.
+
+    private static int mouseButtons = 0;
+    private static long mouseDown = 0;
+    private static Method setActionButton;
+
+    private static MotionEvent mouseEvent(long down, int action, float x, float y, int buttons, float v, float h) {
+        MotionEvent.PointerProperties pp = new MotionEvent.PointerProperties();
+        pp.id = 0;
+        pp.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+        MotionEvent.PointerCoords pc = new MotionEvent.PointerCoords();
+        pc.x = x;
+        pc.y = y;
+        pc.pressure = buttons != 0 ? 1f : 0f;
+        pc.size = 1f;
+        if (v != 0) pc.setAxisValue(MotionEvent.AXIS_VSCROLL, v);
+        if (h != 0) pc.setAxisValue(MotionEvent.AXIS_HSCROLL, h);
+        long now = SystemClock.uptimeMillis();
+        return MotionEvent.obtain(down, now, action, 1, new MotionEvent.PointerProperties[] { pp },
+                new MotionEvent.PointerCoords[] { pc }, 0, buttons, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0);
+    }
+
+    private static void mouseMove(int display, float x, float y) throws Exception {
+        long t = mouseButtons != 0 ? mouseDown : SystemClock.uptimeMillis();
+        send(mouseEvent(t, mouseButtons != 0 ? MotionEvent.ACTION_MOVE : MotionEvent.ACTION_HOVER_MOVE, x, y, mouseButtons, 0, 0), display);
+    }
+
+    private static void withActionButton(MotionEvent e, int button) {
+        try {
+            if (setActionButton == null) setActionButton = MotionEvent.class.getMethod("setActionButton", int.class);
+            setActionButton.invoke(e, button);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void mouseButton(int display, float x, float y, int button, boolean down) throws Exception {
+        if (down) {
+            if ((mouseButtons & button) != 0) return;
+            boolean first = mouseButtons == 0;
+            mouseButtons |= button;
+            if (first) {
+                mouseDown = SystemClock.uptimeMillis();
+                send(mouseEvent(mouseDown, MotionEvent.ACTION_DOWN, x, y, mouseButtons, 0, 0), display);
+            }
+            MotionEvent press = mouseEvent(mouseDown, MotionEvent.ACTION_BUTTON_PRESS, x, y, mouseButtons, 0, 0);
+            withActionButton(press, button);
+            send(press, display);
+        } else {
+            if ((mouseButtons & button) == 0) return;
+            mouseButtons &= ~button;
+            MotionEvent release = mouseEvent(mouseDown, MotionEvent.ACTION_BUTTON_RELEASE, x, y, mouseButtons, 0, 0);
+            withActionButton(release, button);
+            send(release, display);
+            if (mouseButtons == 0) {
+                send(mouseEvent(mouseDown, MotionEvent.ACTION_UP, x, y, 0, 0, 0), display);
+                send(mouseEvent(SystemClock.uptimeMillis(), MotionEvent.ACTION_HOVER_MOVE, x, y, 0, 0, 0), display);
+            }
+        }
+    }
+
+    private static void mouseWheel(int display, float x, float y, float v, float h) throws Exception {
+        send(mouseEvent(SystemClock.uptimeMillis(), MotionEvent.ACTION_SCROLL, x, y, mouseButtons, v, h), display);
+    }
+
+    /**
+     * Powers the phone's built-in panel off or on with SurfaceControl (hidden API, root only). The
+     * TV is an external display with its own token, so it is never touched.
+     */
+    private static void screen(int mode) throws Exception {
+        Class<?> sc = Class.forName("android.view.SurfaceControl");
+        Object token = null;
+        try {
+            token = sc.getMethod("getInternalDisplayToken").invoke(null);
+        } catch (NoSuchMethodException e) {
+            long[] ids = (long[]) sc.getMethod("getPhysicalDisplayIds").invoke(null);
+            if (ids != null && ids.length > 0) token = sc.getMethod("getPhysicalDisplayToken", long.class).invoke(null, ids[0]);
+        }
+        if (token == null) throw new IllegalStateException("no built-in display");
+        sc.getMethod("setDisplayPowerMode", android.os.IBinder.class, int.class).invoke(null, token, mode);
+        System.out.println("screen " + mode);
+        System.out.flush();
+    }
+
+    /** Powers every physical display except the phone's own panel off (0) or on (2). Prints how many. */
+    private static void external(int mode) throws Exception {
+        Class<?> sc = Class.forName("android.view.SurfaceControl");
+        Object internal = null;
+        try { internal = sc.getMethod("getInternalDisplayToken").invoke(null); } catch (Throwable ignored) { }
+        long[] ids = (long[]) sc.getMethod("getPhysicalDisplayIds").invoke(null);
+        Method token = sc.getMethod("getPhysicalDisplayToken", long.class);
+        Method power = sc.getMethod("setDisplayPowerMode", android.os.IBinder.class, int.class);
+        int n = 0;
+        for (int i = 0; ids != null && i < ids.length; i++) {
+            Object t = token.invoke(null, ids[i]);
+            // without the internal token, the first physical display is the phone's own
+            if (t == null || (internal != null ? t.equals(internal) : i == 0)) continue;
+            power.invoke(null, t, mode);
+            n++;
+        }
+        System.out.println("external " + mode + " " + n);
+        System.out.flush();
+    }
+
+    // ---------------------------------------------------------------- where media sound goes
+
+    /** The media strategy's id (the one that plays USAGE_MEDIA), from AudioProductStrategy. */
+    private static int mediaStrategy() throws Exception {
+        Class<?> aps = Class.forName("android.media.audiopolicy.AudioProductStrategy");
+        java.util.List<?> list = (java.util.List<?>) aps.getMethod("getAudioProductStrategies").invoke(null);
+        android.media.AudioAttributes media = new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).build();
+        Method supports = aps.getMethod("supportsAudioAttributes", android.media.AudioAttributes.class);
+        Method id = aps.getMethod("getId");
+        for (Object s : list) if ((Boolean) supports.invoke(s, media)) return (Integer) id.invoke(s);
+        throw new IllegalStateException("no media strategy");
+    }
+
+    private static void audioOut(String address) throws Exception {
+        Object binder = Class.forName("android.os.ServiceManager").getMethod("getService", String.class).invoke(null, "audio");
+        Object audio = Class.forName("android.media.IAudioService$Stub").getMethod("asInterface", android.os.IBinder.class).invoke(null, binder);
+        int strategy = mediaStrategy();
+        Class<?> ada = Class.forName("android.media.AudioDeviceAttributes");
+        if ("-".equals(address)) {
+            for (Method m : audio.getClass().getMethods()) {
+                if ((m.getName().equals("removePreferredDevicesForStrategy") || m.getName().equals("removePreferredDeviceForStrategy"))
+                        && m.getParameterTypes().length == 1) { m.invoke(audio, strategy); break; }
+            }
+            System.out.println("audio normal");
+            System.out.flush();
+            return;
+        }
+        // role 2: an output; type 8: AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+        Object dev = ada.getConstructor(int.class, int.class, String.class).newInstance(2, 8, address);
+        boolean done = false;
+        for (Method m : audio.getClass().getMethods()) {
+            Class<?>[] t = m.getParameterTypes();
+            if (m.getName().equals("setPreferredDevicesForStrategy") && t.length == 2 && t[1] == java.util.List.class) {
+                m.invoke(audio, strategy, java.util.Collections.singletonList(dev)); done = true; break;
+            }
+            if (m.getName().equals("setPreferredDeviceForStrategy") && t.length == 2 && t[1] == ada) {
+                m.invoke(audio, strategy, dev); done = true; break;
+            }
+        }
+        System.out.println(done ? "audio " + address : "err no preferred-device call");
+        System.out.flush();
     }
 
     /** Types text with the virtual keyboard map. Characters it has no keys for are skipped. */

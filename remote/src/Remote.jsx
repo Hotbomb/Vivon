@@ -1,3 +1,5 @@
+import { makePadSender } from './padSender.js';
+import { padGain, getPadAccel } from './pointer.js';
 import { useEffect, useRef, useState } from 'react';
 import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
@@ -184,32 +186,26 @@ function zoneAt(r, x, y) {
 const stopTimers = (s) => { if (s) { clearTimeout(s.timer); clearInterval(s.timer); } };
 
 // `offState` is null when the TV can be driven, else 'off' | 'waking' | 'unreachable'.
-// LG's pointer from the pad: a drag moves it, a tap clicks, two fingers scroll. Moves are added up
-// and sent one request at a time, so a slow answer never queues a backlog.
+// The pad's pointer (LG's, or the DeX mouse): a drag moves it, a tap clicks, two fingers scroll.
 const GAIN = 1.8; const SCROLL_GAIN = 1.2; const TAP_MS = 300; const TAP_MOVE = 8;
 function usePointerPad(onPointer) {
-  const acc = useRef({ dx: 0, dy: 0, scroll: 0, click: false });
-  const busy = useRef(false);
-  const flush = () => {
-    if (busy.current) return;
-    const a = acc.current;
-    if (!a.dx && !a.dy && !a.scroll && !a.click) return;
-    const d = { dx: Math.round(a.dx), dy: Math.round(a.dy), scroll: Math.round(a.scroll), click: a.click };
-    acc.current = { dx: a.dx - d.dx, dy: a.dy - d.dy, scroll: a.scroll - d.scroll, click: false };
-    busy.current = true;
-    Promise.resolve(onPointer(d)).catch(() => {}).finally(() => { busy.current = false; flush(); });
-  };
-  const add = (k, v) => { acc.current[k] = k === 'click' ? true : acc.current[k] + v; flush(); };
-  return add;
+  const latest = useRef(onPointer);
+  latest.current = onPointer;
+  const add = useRef(null);
+  if (!add.current) add.current = makePadSender((d) => latest.current(d));
+  return add.current;
 }
 
-export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLivingRoom, onPointer }) {
+export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLivingRoom, onPointer, onMode }) {
   const [pointerOn, setPointerOn] = useState(() => { try { return localStorage.getItem('tv.pointer') === '1'; } catch (e) { return false; } });
   const togglePointer = () => { const v = !pointerOn; setPointerOn(v); try { localStorage.setItem('tv.pointer', v ? '1' : '0'); } catch (e) { /* */ } };
   const addPointer = usePointerPad(onPointer || (() => {}));
   const touches = useRef(new Map());
+  const spotFrame = useRef(0);
   const pg = useRef(null);
   const usePointerMode = Boolean(onPointer) && pointerOn;
+  // the page below changes with it: the pointer's buttons instead of Back, Home, play and volume
+  useEffect(() => { onMode?.(usePointerMode && !offState); }, [usePointerMode, offState]); // eslint-disable-line react-hooks/exhaustive-deps
   const ref = useRef(null);
   const g = useRef(null);
   const [lit, setLit] = useState(null);
@@ -220,10 +216,23 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   const flash = (dir) => { setLit(dir); clearTimeout(flash.t); flash.t = setTimeout(() => setLit(null), 140); };
   const send = (dir) => { onKey(dir); flash(dir); };
 
+  // The scroll strip on the pad's right edge: up and down scroll the page, left and right scroll it sideways.
+  const strip = useRef(null);
+  const [stripOn, setStripOn] = useState(false);
+  const sDown = (e) => { e.stopPropagation(); e.currentTarget.setPointerCapture?.(e.pointerId); strip.current = { x: e.clientX, y: e.clientY }; setStripOn(true); tick(); };
+  const sMove = (e) => {
+    e.stopPropagation();
+    const a = strip.current; if (!a) return;
+    const dx = e.clientX - a.x; const dy = e.clientY - a.y;
+    if (Math.abs(dy) >= Math.abs(dx)) onPointer?.({ scroll: Math.round(dy * 1.6) }); else onPointer?.({ hscroll: Math.round(dx * 1.6) });
+    strip.current = { x: e.clientX, y: e.clientY };
+  };
+  const sUp = (e) => { e.stopPropagation(); strip.current = null; setStripOn(false); };
+
   const pDown = (e) => {
-    if (e.target.closest?.('.pointer-toggle, .pad-msg')) return;
+    if (e.target.closest?.('.pointer-toggle, .pad-msg, .pad-scroll')) return;
     ref.current.setPointerCapture(e.pointerId);
-    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     if (touches.current.size === 1) pg.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false, two: false };
     else if (pg.current) pg.current.two = true;
     const r = ref.current.getBoundingClientRect();
@@ -233,20 +242,34 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     const last = touches.current.get(e.pointerId); const s = pg.current;
     if (!last || !s) return;
     const dx = e.clientX - last.x; const dy = e.clientY - last.y;
-    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > TAP_MOVE) s.moved = true;
+    touches.current.set(e.pointerId, { ...last, x: e.clientX, y: e.clientY });
+    // each finger from where it started, so a second finger landing elsewhere is still a tap
+    if (Math.hypot(e.clientX - last.sx, e.clientY - last.sy) > TAP_MOVE) s.moved = true;
     if (e.pointerId !== s.id) return;   // with two fingers, the first one drives the scroll
+    // the glow under the finger: once a frame at most, so drawing never holds up the moves
     const r = ref.current.getBoundingClientRect();
-    setSpot({ x: e.clientX - r.left, y: e.clientY - r.top });
-    if (s.two) addPointer('scroll', dy * SCROLL_GAIN);
-    else { addPointer('dx', dx * GAIN); addPointer('dy', dy * GAIN); }
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    if (!spotFrame.current) spotFrame.current = requestAnimationFrame(() => { spotFrame.current = 0; if (pg.current) setSpot(at); });
+    if (s.two) {
+      // two fingers: up and down scroll, left and right scroll sideways (whichever way the fingers mostly go)
+      if (Math.abs(dy) >= Math.abs(dx)) addPointer('scroll', dy * SCROLL_GAIN); else addPointer('hscroll', dx * SCROLL_GAIN);
+    } else {
+      // faster swipes go further (pointer acceleration), so the TV's whole screen is one easy swipe away
+      const now = performance.now(); const dt = Math.max(1, now - (s.lt || now - 16)); s.lt = now;
+      // with enhanced precision, faster swipes go further; without it, the pointer moves exactly as the finger
+      const g = GAIN * padGain() * (getPadAccel() ? 1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9) : 1.5);
+      addPointer('dx', dx * g); addPointer('dy', dy * g);
+    }
   };
   const pUp = (e) => {
     touches.current.delete(e.pointerId);
+    if (!touches.current.size && spotFrame.current) { cancelAnimationFrame(spotFrame.current); spotFrame.current = 0; }
     const s = pg.current;
     if (touches.current.size) return;
     pg.current = null; setSpot(null);
     if (s && !s.moved && !s.two && Date.now() - s.t < TAP_MS) { addPointer('click'); flash('ok'); tick(); }
+    // a two-finger tap is a right click, like a laptop's touchpad
+    else if (s && !s.moved && s.two && Date.now() - s.t < TAP_MS && onPointer) { onPointer({ button: 'right' }); tick(); }
   };
 
   const down = (e) => {
@@ -325,10 +348,20 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
       aria-label={usePointerMode ? 'Touchpad. Drag to move the TV pointer, tap to click, two fingers to scroll.' : 'Swipe pad. Swipe or tap an arrow to move, tap the middle to select.'}
       onPointerDown={usePointerMode && !disabled ? pDown : down} onPointerMove={usePointerMode && !disabled ? pMove : move}
       onPointerUp={usePointerMode && !disabled ? pUp : up} onPointerCancel={usePointerMode && !disabled ? pUp : cancel}>
+      {usePointerMode && !disabled && (
+        <div className={`pad-scroll ${stripOn ? 'on' : ''}`} role="slider" aria-label={t('air_scroll')} aria-valuenow={0}
+          onPointerDown={sDown} onPointerMove={sMove} onPointerUp={sUp} onPointerCancel={sUp}>
+          <Ic.Chevron className="ps-up" size={16} />
+          <span className="ps-grip" aria-hidden="true"><i /><i /><i /></span>
+          <span className="ps-label">{t('air_scroll')}</span>
+          <span className="ps-side" aria-hidden="true"><Ic.Back size={12} /><Ic.ChevronR size={12} /></span>
+          <Ic.Chevron className="ps-down" size={16} />
+        </div>
+      )}
       {onPointer && !disabled && (
         <button type="button" className={`pointer-toggle ${pointerOn ? 'on' : ''}`} aria-pressed={pointerOn}
           aria-label={pointerOn ? 'Pointer on: tap for arrows' : 'Arrows: tap for the TV pointer'}
-          onPointerDown={(e) => e.stopPropagation()} onClick={() => { tick(); togglePointer(); }}><Ic.Cursor size={18} /></button>
+          onPointerDown={(e) => e.stopPropagation()} onClick={() => { tick(); togglePointer(); Promise.resolve(onPointer({ show: !pointerOn })).catch(() => {}); }}><Ic.Cursor size={18} /></button>
       )}
       {!disabled && (
         <div className="sr-only">
@@ -378,19 +411,23 @@ function useRepeat(fn) {
 }
 
 // The bottom row, in thumb reach: back, home, play or pause, volume. Like Apple's TV Remote.
-export function Controls({ tv, onKey, onVolume }) {
+// lead: other buttons in place of Back, Home and play (the trackpad's pointer mode puts Keyboard
+// and Speak there); the volume stays.
+export function Controls({ tv, onKey, onVolume, lead }) {
   const v = tv?.volume;
   const st = tv?.playing?.state;
   const upR = useRepeat(() => onVolume('up'));
   const downR = useRepeat(() => onVolume('down'));
   return (
     <div className="controls">
+      {lead || (<>
       <button className="round big glass" aria-label={t('back')} onClick={() => { tick(); onKey('back'); }}><Ic.Back /></button>
       <button className="round big glass" aria-label={t('home')} onClick={() => { tick(); onKey('home'); }}><Ic.Home /></button>
       <button className="round big glass" aria-label={st === 'playing' ? t('pause') : st === 'paused' ? t('play') : t('play_pause')}
         onClick={() => { tick(); onKey('play_pause'); }}>
         {st === 'playing' ? <Ic.Pause /> : st === 'paused' ? <Ic.Play /> : <Ic.PlayPause />}
       </button>
+      </>)}
       <div className="volume glass" role="group" aria-label={t('volume')}>
         <button aria-label="Volume down" {...downR}><Ic.Minus /></button>
         <button className="vol-mid" aria-label={v?.muted ? 'Unmute' : 'Mute'} onClick={() => { tick(); onVolume('mute'); }}>

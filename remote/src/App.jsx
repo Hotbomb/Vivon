@@ -7,6 +7,12 @@ import { TopBar, NowPlaying, Pad, Controls, AskButton } from './Remote.jsx';
 import { Watch } from './Watch.jsx';
 import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sheets.jsx';
 import { usePullDown, usePageDrag } from './gestures.js';
+import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink, PointerButtons } from './Couch.jsx';
+import { ConnectSheet } from './Connect.jsx';
+import { ControllerScreen } from './Controller.jsx';
+import { inApp } from './appBridge.js';
+import * as chan from './channel.js';
+import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
 const store = {
@@ -169,6 +175,7 @@ export default function App() {
   const say = useCallback((text, kind = 'info') => {
     setToast({ text, kind, id: Date.now() });
   }, []);
+  useSharedLink(say);
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), toast.text.length > 40 ? 4500 : 2600); return () => clearTimeout(t); }, [toast]);
 
   useEffect(() => { setTv(null); return subscribeNow(setTv, setReach); }, [tvId]);
@@ -242,6 +249,9 @@ export default function App() {
   const [wakeError, setWakeError] = useState(null);
   useEffect(() => { if (tv?.power === 'on') setWakeError(null); }, [tv?.power]);
   const onKey = (key, hold) => run(api.key(key, hold));
+  // The Couch Remote app hands the phone's own volume buttons to the TV.
+  const onKeyRef = useRef(onKey); onKeyRef.current = onKey;
+  useEffect(() => { if (!inApp) return undefined; window.couchAppKey = (k) => onKeyRef.current(k); return () => { delete window.couchAppKey; }; }, []);
   const onVolume = (a) => run(api.volume(a));
   // A fully off TV leaves the Wi-Fi; the bridge tries Wake-on-LAN for up to 25 s, then gives up.
   const onWake = async () => {
@@ -283,6 +293,43 @@ export default function App() {
   // iOS only raises the keyboard if focus happens inside the tap itself, and a closed sheet is inert
   // (cannot take focus), so open it synchronously, then focus, all within the same tap.
   const openAsk = () => { tick(); flushSync(() => setSheet('ask')); askInput.current?.focus({ preventScroll: true }); };
+  // Couch Phone's tools. The keyboard focuses inside the tap (iOS), and speaking and the air mouse
+  // start inside the tap too (iOS asks for the microphone and motion only then). Both need the
+  // secure (https) remote: on the plain one they explain how to move there instead.
+  const kbInput = useRef(null);
+  const speakRef = useRef(null);
+  const airRef = useRef(null);
+  const [secureWhy, setSecureWhy] = useState('speak');
+  const openKeyboard = () => { tick(); flushSync(() => setSheet('keyboard')); kbInput.current?.focus({ preventScroll: true }); };
+  // A text box picked on the TV (a search bar): the keyboard opens by itself, and closes again when
+  // the TV leaves the box, if it was opened that way. In the Couch Remote app the phone's own
+  // keyboard comes up too (a browser only shows it after a tap).
+  const typingWas = useRef(false);
+  const kbAuto = useRef(false);
+  useEffect(() => {
+    const on = Boolean(tv?.typing);
+    if (on && !typingWas.current && !sheet && (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind === 'dex') {
+      kbAuto.current = true;
+      flushSync(() => setSheet('keyboard'));
+      kbInput.current?.focus({ preventScroll: true });
+      try { window.CouchApp?.showKeyboard?.(); } catch (e) { /* */ }
+    } else if (!on && typingWas.current && kbAuto.current && sheet === 'keyboard') {
+      kbAuto.current = false;
+      setSheet(null);
+    }
+    typingWas.current = on;
+  }, [tv?.typing]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openSpeak = () => {
+    tick();
+    if (!secure && !inApp) { setSecureWhy('speak'); setSheet('secure'); return; }
+    flushSync(() => setSheet('speak')); speakRef.current?.start();
+  };
+  const openAir = () => {
+    tick();
+    if (!secure) { setSecureWhy('air'); setSheet('secure'); return; }
+    flushSync(() => setSheet('air')); airRef.current?.start();
+  };
+  useEffect(() => { setPointerErrorHandler((e) => say(e.message, 'err')); }, [say]);
 
   const sleepEnds = tv?.sleep?.ends;
   const sleepLeft = sleepEnds ? `${Math.max(0, Math.round((new Date(sleepEnds) - Date.now()) / 60000))}m` : null;
@@ -336,21 +383,39 @@ export default function App() {
     </nav>
   );
 
+  const [padIsPointer, setPadIsPointer] = useState(false);   // the trackpad drives the TV pointer
+  const tvKind = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind;
+  // Couch Phone: the keys' socket opens now, so the first press goes straight out
+  useEffect(() => { if (tvKind === 'dex') chan.warm(); }, [tvKind]);
   const remote = (
     <div className="remote-col">
       <div className="pull-zone" {...pull}>
       {(() => { const d = (thisTv || (tvs.length === 1 ? tvs[0] : null))?.devmode; if (!d?.warning) return null; const said = d.warning_key ? t(d.warning_key, d.warning_vars) : d.warning; return <div className={`devwarn ${d.level || 'warn'}`} role="alert">{said === d.warning_key ? d.warning : said}</div>; })()}
       <TopBar people={people} tvName={thisTv?.name} who={who} setWho={pickWho} tv={tv} appInfo={appById[tv?.app?.id]} reach={reach} sleepLeft={sleepLeft} onPower={onPower} onMore={() => setSheet('more')} />
-      {tvId && <button className="tv-chip glass" onClick={() => { tick(); setSheet('more'); }}><Ic.Screen size={15} /> {t('this_tv', { name: thisTv?.name || t('this') })}</button>}
-      <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />
+      {tvId && tvs.length > 1 && <button className="tv-chip glass" onClick={() => { tick(); setSheet('more'); }}><Ic.Screen size={15} /> {t('this_tv', { name: thisTv?.name || t('this') })}</button>}
+      {/* On DeX the top bar already names the app in front, and nothing reports what is playing. */}
+      {tvKind !== 'dex' && <NowPlaying tv={tv} appInfo={appById[tv?.app?.id]} onKey={onKey} roomy={h >= 760} />}
       </div>
-      <Pad onPointer={(thisTv || (tvs.length === 1 ? tvs[0] : null))?.kind === 'lg' ? (d) => api.pointer(d) : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
-        tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} />
-      <Controls tv={tv} onKey={onKey} onVolume={onVolume} />
-      {wide && askOn && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
+      <Pad onPointer={tvKind === 'lg' ? (d) => api.pointer(d) : tvKind === 'dex' ? padPointer : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
+        tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} onMode={setPadIsPointer} />
+      {tvKind === 'dex' && !padIsPointer && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)}
+        onPad={() => { tick(); setSheet('pad'); }} browser={!offState && BROWSERS.includes(tv?.app?.package)} say={say} />}
+      {tvKind === 'dex' && padIsPointer ? (
+        <>
+          {/* the trackpad drives the pointer: the air mouse's buttons, then Keyboard, Speak and the volume */}
+          <PointerButtons onKey={onKey} />
+          <Controls tv={tv} onKey={onKey} onVolume={onVolume} lead={(
+            <>
+              <button className="round big glass" aria-label={t('keyboard')} onClick={openKeyboard}><Ic.Keyboard /></button>
+              <button className="round big glass" aria-label={t('speak')} onClick={openSpeak}><Ic.Mic /></button>
+            </>
+          )} />
+        </>
+      ) : <Controls tv={tv} onKey={onKey} onVolume={onVolume} />}
+      {wide && askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
     </div>
   );
-  const watch = <Watch pull={pull} people={people} who={who || people[0]?.id || 'both'} recs={recs} cont={cont === undefined ? (recs === false ? false : recs?.continue) : cont} apps={apps} hidden={hidden} screens={screens} serviceName={serviceName} onPlay={onPlay} onLaunch={onLaunch} onScreen={onScreen} wide={wide} />;
+  const watch = <Watch pull={pull} people={people} who={who || people[0]?.id || 'both'} recs={recs} cont={cont === undefined ? (recs === false ? false : recs?.continue) : cont} apps={apps} hidden={hidden} screens={screens} serviceName={serviceName} onPlay={onPlay} onLaunch={onLaunch} onScreen={onScreen} wide={wide} ideas={tvKind !== 'dex'} onAppsChanged={() => api.apps().then((d) => setApps(d.apps)).catch(() => {})} />;
 
   return (
     <div className={`app ${wide ? 'is-wide' : ''} ${offState ? 'is-off' : ''}`}>
@@ -368,7 +433,7 @@ export default function App() {
             <section className="page watch-page" aria-label="Watch" inert={tab !== 'watch'}>{watch}</section>
           </div>
           <div className="dock" {...dockDrag}>
-            {askOn && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
+            {askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
             {tabs}
           </div>
         </main>
@@ -377,8 +442,14 @@ export default function App() {
       <AskSheet ref={askInput} open={sheet === 'ask'} onClose={() => setSheet(null)} who={who} recs={recs} onAsk={onAsk} onDone={(reply) => say(reply)} />
       <MoreSheet ref={moreSheet} open={sheet === 'more'} tvs={tvs} tvId={tvId || 'living-room'} onTv={(id) => { tick(); chooseTv(id); }}
         picture={tv?.picture} pictureInfo={pictureInfo} onPicture={onPicture} onClose={() => setSheet(null)} sleepEnds={sleepEnds} sleepError={sleepError} onSleep={onSleep}
-        onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} />
+        onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} onConnect={(k) => setSheet(k)} say={say} />
+      <ControllerScreen open={sheet === 'pad'} onClose={() => setSheet(null)} />
+      <ConnectSheet open={sheet === 'bluetooth' || sheet === 'wifi'} kind={sheet === 'wifi' ? 'wifi' : 'bluetooth'} onClose={() => setSheet(null)} say={say} />
       <ArrangeSheet open={sheet === 'arrange'} onClose={() => setSheet(null)} tvName={thisTv?.name} hidden={hidden} />
+      <KeyboardSheet ref={kbInput} open={sheet === 'keyboard'} onClose={() => setSheet(null)} say={say} onSpeak={openSpeak} />
+      <SpeakSheet ref={speakRef} open={sheet === 'speak'} onClose={() => setSheet(null)} say={say} />
+      <AirMouseSheet ref={airRef} open={sheet === 'air'} onClose={() => setSheet(null)} say={say} onKey={onKey} />
+      <SecureSheet open={sheet === 'secure'} onClose={() => setSheet(null)} why={secureWhy} />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} onSaved={(list) => { setPeople(list); if (who && who !== 'both' && !list.some((p) => p.id === who)) setWho(list[0]?.id || 'both'); }} />
       {!who && people.length > 0 && <Onboarding people={people} standalone={standalone} onPick={pickWho} />}
     </div>

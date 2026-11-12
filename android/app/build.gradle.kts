@@ -46,13 +46,23 @@ android {
     kotlinOptions { jvmTarget = "17" }
     // Sideloaded app: lint's Play Store checks would only stop the build.
     lint { checkReleaseBuilds = false; abortOnError = false }
-    packaging { resources { excludes += setOf("META-INF/*.kotlin_module") } }
+    packaging {
+        resources { excludes += setOf("META-INF/*.kotlin_module") }
+        // The mouse helper (libcouchmouse.so) is run as a program, so it must be a real file on the phone.
+        jniLibs { useLegacyPackaging = true }
+    }
 }
 
 dependencies {
     // HTTP + WebSocket server (BSD-3-Clause).
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
+    // Lets the Bluetooth panel use Android's hidden unpair and connect calls (Apache-2.0).
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    // QR codes for "Connect a remote" (Apache-2.0).
+    implementation("com.google.zxing:core:3.5.3")
+    // The Couch TV browser: a script in every frame, players included (Apache-2.0).
+    implementation("androidx.webkit:webkit:1.9.0")
 }
 
 // The phone remote (remote/dist) and the TV home page (tv-home/web) live elsewhere in the repo.
@@ -74,3 +84,13 @@ val copyWeb by tasks.registering(Copy::class) {
     }
 }
 tasks.named("preBuild") { dependsOn(copyWeb) }
+
+// The Couch Remote app (../remote-app), built first and kept in the assets, so the TV hands out a
+// remote of the same version at /couch-remote.apk ("Connect a remote" on the TV home).
+val copyRemoteApp by tasks.registering(Copy::class) {
+    description = "Puts the Couch Remote APK into the assets."
+    dependsOn(":remote-app:assembleRelease")
+    from(rootProject.file("remote-app/build/outputs/apk/release")) { include("*.apk"); rename { "couch-remote.apk" } }
+    into(layout.projectDirectory.dir("src/main/assets/remote-app"))
+}
+tasks.named("preBuild") { dependsOn(copyRemoteApp) }

@@ -50,6 +50,7 @@
     night_look: "Night look",
     input: "Input",
     bluetooth: "Bluetooth",
+    connect_remote: "Connect a remote",
     network: "Network",
     n_min: "{n} min",
     timer_off: "Off",

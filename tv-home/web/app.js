@@ -33,7 +33,7 @@
   // read in readConfig() once the page starts (mock.js fills them in for previews). See docs/CONFIG.md.
   var CFG = {}, HOME = {}, TVCFG = {}, QUICK = [];
   var WXCFG = { lat: -33.8688, lon: 151.2093, place: "Sydney", timezone: "Australia/Sydney" };
-  var QUICK_ALL = ["sleep", "picture", "look", "soundscape", "screen_off", "headphones", "input", "bluetooth", "network", "screensaver"];
+  var QUICK_ALL = ["sleep", "picture", "look", "remote", "soundscape", "screen_off", "headphones", "input", "bluetooth", "network", "screensaver"];
   // The most personal photos this TV keeps (also MAX_PHOTOS in bridge/server.py and MainActivity.kt).
   var MAX_PHOTOS = 50;
   var ON_TV = false;   // served by the on-TV app (config "mode"), which can open the TV's own settings screens
@@ -169,12 +169,12 @@
   var TUCKED_NAMES = /^(screen ?shar|live ?tv|usb|media ?cent|browser|device assistant)/i;
   // The Play Store, under the name most people know it by (in the chosen language).
   var RENAME = { "com.android.vending": "app_store" };
-  // Never shown: home screens, store and system clutter, and Moonlight (a screen tile opens it).
-  // A maker's own clutter (help apps, file browsers) is listed per house in config.json,
-  // home.hide_packages, and added to this list in readConfig().
+  // Never shown: other home screens. (couch-tv also hid Moonlight, Play Games and Google TV, which a
+  // TV opens another way; on the phone they are ordinary apps, so they stay.) A maker's own clutter
+  // is listed per house in config.json, home.hide_packages, and added to this list in readConfig().
   var HIDDEN = [
     "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "app.couchtv.launcher",
-    "com.limelight", "com.google.android.play.games", "com.google.android.videos"
+    "com.sec.android.app.launcher", "com.sec.android.app.desktoplauncher"
   ];
   var GRID_COLS = 12, GRID_MAX = 24;
   var DOCK_APPS = 10;   // Night: apps in the dock before Settings and More apps (home.dock_size)
@@ -187,6 +187,7 @@
     screen: '<svg viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M9 20.5h6M12 16.5v4"/></svg>',
     moon: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
     picture: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" class="fill"/></svg>',
+    phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
     more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>',
     gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     look: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3"/><path d="M2.5 16l5.5-5.5 4.5 4.5 3-3 6 6"/><circle cx="16.5" cy="8.8" r="1.6"/></svg>',
@@ -294,6 +295,12 @@
     // no "quick" from an older bridge: the sleep timer, and the picture switch where the TV has one
     QUICK = (Array.isArray(ST.quick) ? ST.quick : TVCFG.quick || ["sleep", "picture"])
       .filter(function (q, i, a) { return QUICK_ALL.indexOf(q) >= 0 && a.indexOf(q) === i; });
+    // Couch Phone: "Connect a remote" takes the look button's place, even in a list saved before it existed.
+    if (CFG.app === "couch-phone") {
+      QUICK = QUICK.map(function (q) { return q === "look" ? "remote" : q; })
+        .filter(function (q, i, a) { return a.indexOf(q) === i; });
+      if (QUICK.indexOf("remote") < 0) QUICK.unshift("remote");
+    }
     THEME = (Q.match(/[?&]theme=([a-z]+)/) || [])[1] || lookSetting();
     if (THEME !== "classic" && THEME !== "oled") THEME = "night";
     NIGHT = THEME === "night";
@@ -435,6 +442,8 @@
   function iconUrl(pkg) {
     if (!pkg) return null;
     if (TV) return TV.iconUrl ? TV.iconUrl(pkg) : "http://tvos.invalid/icon/" + pkg;   // Samsung: samsung/app/tizen.js
+    // Couch Phone: the phone draws each app's own icon (Icons.kt)
+    if (window.COUCH_CONFIG && window.COUCH_CONFIG.app === "couch-phone" && !MOCK) return "/api/app-icon/" + encodeURIComponent(pkg);
     return window.MOCK_ICON ? window.MOCK_ICON(pkg) : null;
   }
 
@@ -1236,6 +1245,7 @@
       if (q === "input") return !OFFLINE || nativeInputs();
       if (q === "screensaver") return nativeScreensaver();
       if (q === "bluetooth" || q === "network") return ON_TV && !OFFLINE;
+      if (q === "remote") return !!window.couchConnect && CFG.app === "couch-phone" && !OFFLINE;
       return false;
     });
   }
@@ -1285,6 +1295,8 @@
         el.innerHTML = ICONS.screensaver + "<span>" + esc(t("quick_screensaver")) + "</span>";
       } else if (q === "bluetooth" || q === "network") {
         el.innerHTML = ICONS[q] + "<span>" + esc(t(q)) + "</span>";
+      } else if (q === "remote") {
+        el.innerHTML = ICONS.phone + "<span>" + esc(t("connect_remote")) + "</span>";
       }
     });
     if (qi >= vis.length) qi = Math.max(0, vis.length - 1);
@@ -1445,8 +1457,15 @@
     else if (ON_TV) openSettingsScreen(it.act);
   }
   // The TV's Bluetooth or network settings, opened by the on-TV app (Tv.openSettingsScreen).
+  // Couch Phone has its own Bluetooth and Wi-Fi screens (connect.js): those open instead.
   function openSettingsScreen(which) {
+    if (window.couchConnect && CFG.app === "couch-phone") { openConnect(which); return; }
     api("POST", "/api/launch", { app: which }).catch(function (e) { note(e.message); });
+  }
+  function openConnect(which) {
+    var from = zone === "inputs" ? "quick" : (zone || "quick");
+    clearFocus(); zone = "connect";
+    window.couchConnect.open(which, api, function () { zone = from === "connect" ? "quick" : from; paintFocus(); });
   }
   // The TV's own screensaver (Google TV's Ambient mode: the Google Photos albums are chosen there).
   function startScreensaver() {
@@ -1471,6 +1490,7 @@
     else if (q === "input") openInputs();
     else if (q === "screensaver") startScreensaver();
     else if (q === "bluetooth" || q === "network") openSettingsScreen(q);
+    else if (q === "remote") openConnect("remote");
   }
   // Headphones: the TV's own Bluetooth screen. The launcher opens it itself, the on-TV app through
   // its /api/launch, and the bridge with a fixed ADB command (POST /api/bluetooth-audio, no body).
@@ -1643,6 +1663,23 @@
         badge + bar + '</div><div class="caption"><b>' + esc(it.title) + "</b><span>" + esc(subtitle(it)) + "</span></div></div>";
     }).join("");
     shelfEls = Array.prototype.slice.call(track.children);
+  }
+
+  // ---------------- the phone's battery (Couch Phone) ----------------
+  // A small badge in the top right corner: the level, a bolt while it charges, red when low.
+  function refreshBattery() {
+    api("GET", "/api/battery").then(function (b) {
+      var el = $("battery");
+      if (!el || !b || typeof b.level !== "number") return;
+      var lvl = Math.max(0, Math.min(100, Math.round(b.level)));
+      var w = (16 * lvl / 100).toFixed(1);
+      el.innerHTML = '<svg viewBox="0 0 26 14" aria-hidden="true"><rect x="0.75" y="0.75" width="21" height="12.5" rx="3" class="bat-shell"/>' +
+        '<rect x="23" y="4.5" width="2.25" height="5" rx="1" class="bat-tip"/><rect x="3" y="3" width="' + w + '" height="8" rx="1.5" class="bat-fill"/>' +
+        (b.charging ? '<path d="M12.5 1.5 7.5 7.6h3.4l-1.4 4.9 5-6.1h-3.4z" class="bat-bolt"/>' : "") + "</svg>" + "<span>" + lvl + "%</span>";
+      el.className = "battery" + (b.charging ? " charging" : lvl <= 15 ? " low" : "");
+      el.setAttribute("aria-label", "Phone battery " + lvl + " percent" + (b.charging ? ", charging" : ""));
+      el.hidden = false;
+    }).catch(function () {});
   }
 
   // ---------------- apps ----------------
@@ -2154,6 +2191,7 @@
   function paintFocus() {
     if (zone === "settings") { renderSettings(); return; }
     if (zone === "smart") { window.smartHome.paint(); return; }
+    if (zone === "connect") { window.couchConnect.paint(); return; }
     if (zone === "ambient") { renderAmbientMusic(); return; }
     clearFocus();
     renderHint();
@@ -2223,6 +2261,7 @@
     touched = true;
     if (zone === "settings") { setMove(dx, dy); return; }
     if (zone === "smart") { window.smartHome.move(dx, dy); return; }
+    if (zone === "connect") { window.couchConnect.move(dx, dy); return; }
     if (zone === "gear") { if (dy) { gi = Math.max(0, Math.min(1, gi + dy)); renderGear(); } return; }
     if (zone === "appmenu") { if (dy) { amI = Math.max(0, Math.min(amItems.length - 1, amI + dy)); renderAppMenu(); } return; }
     if (zone === "shelfmenu") { if (dy) { smI = Math.max(0, Math.min(smItems.length - 1, smI + dy)); renderShelfMenu(); } return; }
@@ -2372,6 +2411,7 @@
     }
     if (zone === "settings") { setBack(); return; }
     if (zone === "smart") { closeSmart(); paintFocus(); return; }
+    if (zone === "connect") { window.couchConnect.back(); return; }
     if (zone === "gear") { closeGear(); paintFocus(); return; }
     if (zone === "appmenu") { closeAppMenu(); paintFocus(); return; }
     if (zone === "shelfmenu") { closeShelfMenu(); paintFocus(); return; }
@@ -2400,7 +2440,7 @@
   function hold() {
     touched = true;
     if (zone === "settings") return setHold();
-    if (zone === "gear" || zone === "smart" || zone === "updask" || zone === "inputs" || zone === "shelfmenu") return false;
+    if (zone === "gear" || zone === "smart" || zone === "connect" || zone === "updask" || zone === "inputs" || zone === "shelfmenu") return false;
     if (lift) { dropLift(); return true; }
     if (zone === "pmenu") {
       if (plift) dropPeople();
@@ -2416,6 +2456,7 @@
     touched = true;
     if (zone === "settings") { setActivate(); return; }
     if (zone === "smart") { window.smartHome.ok(); return; }
+    if (zone === "connect") { window.couchConnect.ok(); return; }
     if (zone === "gear") { if (gi === 0) openSettings(); else openTvSettings(); return; }
     if (zone === "appmenu") { doAppMenu(); return; }
     if (zone === "shelfmenu") { doShelfMenu(); return; }
@@ -3634,14 +3675,15 @@
   // couch-tv has no system home behind it, so it opens couch-tv's own gear menu, like the gear tile.
   function isSettings(e) { return e.key === "Settings" || e.key === "TvSettings" || e.keyCode === 176; }
   function settingsKey() {
-    if (zone === "gear" || zone === "settings" || zone === "smart" || zone === "appmenu" || zone === "shelfmenu" || zone === "updask" || zone === "inputs") { goHome(); return; }
+    if (zone === "gear" || zone === "settings" || zone === "smart" || zone === "connect" || zone === "appmenu" || zone === "shelfmenu" || zone === "updask" || zone === "inputs") { goHome(); return; }
     openGear();
   }
 
   // ---------------- a pointer (LG's Magic Remote, or the phone's touchpad on an LG) ----------------
-  // Pointing at a tile moves the focus there; a click opens it, as OK would. Only on webOS, where the
-  // TV has a pointer; elsewhere the home stays arrows only.
-  var HAS_POINTER = !!window.COUCH_WEBOS;
+  // Pointing at a tile moves the focus there; a click opens it, as OK would. On webOS, where the
+  // TV has a pointer, and on Couch Phone (its remote's touchpad and air mouse are a real pointer);
+  // elsewhere the home stays arrows only.
+  var HAS_POINTER = !!window.COUCH_WEBOS || !!(window.COUCH_CONFIG && window.COUCH_CONFIG.app === "couch-phone");
   if (HAS_POINTER) document.documentElement.classList.add("has-pointer");
   function inList(list, el) {
     for (; el && el !== document.body; el = el.parentNode) { var i = list.indexOf(el); if (i >= 0) return i; }
@@ -3782,6 +3824,7 @@
       return;
     }
     if (typingKey(e)) return;   // typing a place or a name: the keys belong to the text box
+    if (zone === "connect" && window.couchConnect.typingKey(e)) return;   // a Wi-Fi password box
     if (isOk(e)) {
       e.preventDefault();
       if (e.repeat || okDown) return;   // a held key repeating: the timer is already running
@@ -3882,7 +3925,7 @@
 
   function refresh() {
     // never reshuffle under something being moved, or under the settings screen
-    if (lift || zone === "pmenu" || zone === "settings" || zone === "gear" || zone === "smart" || zone === "updask") return Promise.resolve();
+    if (lift || zone === "pmenu" || zone === "settings" || zone === "gear" || zone === "smart" || zone === "connect" || zone === "updask") return Promise.resolve();
     if (OFFLINE) {
       // only the TV's own apps, in the order last saved; no shows, no Screens
       if (TV) data.apps = sortApps(nativeApps() || []);
@@ -4048,6 +4091,7 @@
     // This TV says who is on its couch first, so what plays here is logged for them (each TV
     // keeps its own); then the lists. Once the home is up: the one-time "tell you about new versions?" question.
     if (!OFFLINE) setInterval(followWho, 3000);
+    if (CFG.app === "couch-phone" && !OFFLINE) { refreshBattery(); setInterval(refreshBattery, 60000); }
     // The bridge's choice wins (a phone that just turned the TV on set it); this TV's own memory is
     // only handed over when the bridge has nobody yet.
     var hello = OFFLINE ? Promise.resolve() : api("GET", "/api/who").then(function (j) {

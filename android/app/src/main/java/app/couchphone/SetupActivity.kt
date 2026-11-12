@@ -25,6 +25,7 @@ class SetupActivity : Activity() {
     private lateinit var address: TextView
     private lateinit var code: TextView
     private lateinit var state: TextView
+    private lateinit var homeButton: Button
     private val tick = object : Runnable { override fun run() { refresh(); main.postDelayed(this, 1500) } }
     private val pinListener: (String?) -> Unit = { main.post { refresh() } }
 
@@ -55,7 +56,8 @@ class SetupActivity : Activity() {
         col.addView(first)
         col.addView(button("New phone code") { Auth.newPin(); refresh() })
         col.addView(button("Ask for root again") { Thread { Root.openShell(); RootInput.warmUp(); main.post { refresh() } }.start() })
-        col.addView(button("Use as this phone's home app too") { HomeRole.request(this) })
+        homeButton = button("") { if (HomeRole.held(this)) HomeRole.release(this) else HomeRole.request(this); main.postDelayed({ refresh() }, 1500) }
+        col.addView(homeButton)
         col.addView(button("Battery: set to Unrestricted") {
             runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
         })
@@ -67,6 +69,9 @@ class SetupActivity : Activity() {
         first.requestFocus()
         if (Auth.currentPin() == null) Auth.newPin()
     }
+
+    override fun onStart() { super.onStart(); shown = java.lang.ref.WeakReference(this) }
+    override fun onDestroy() { if (shown?.get() === this) shown = null; super.onDestroy() }
 
     override fun onResume() { super.onResume(); Auth.onPin(pinListener); main.post(tick) }
     override fun onPause() { super.onPause(); Auth.offPin(pinListener); main.removeCallbacks(tick) }
@@ -87,9 +92,26 @@ class SetupActivity : Activity() {
         val tv = Dex.tvDisplay()
         val dex = if (tv != null) "DeX: on, TV is display $tv." else "DeX: not on a TV right now. Keys go to this phone's screen."
         state.text = "$root\n$dex\nPhones paired: ${Auth.phoneCount()}"
+        // Optional: only the phone's own Home button. DeX opens Couch Phone on the TV either way.
+        homeButton.text = if (HomeRole.held(this)) "Back to Samsung's home on this phone" else "Use as this phone's home app too"
     }
 
     companion object {
+        @Volatile private var shown: java.lang.ref.WeakReference<SetupActivity>? = null
+
+        /**
+         * DeX has started: if this screen is open on the phone's own screen, close it. Samsung DeX
+         * will not show an app on the TV while its window is on the phone ("designed for phone
+         * screen"), and the phone's screen goes off anyway. Opened again from DeX, it opens on the TV.
+         */
+        fun closeOnPhone() {
+            val a = shown?.get() ?: return
+            a.runOnUiThread { if (displayOf(a) == android.view.Display.DEFAULT_DISPLAY) a.finishAndRemoveTask() }
+        }
+
+        @Suppress("DEPRECATION")
+        private fun displayOf(a: Activity) = a.windowManager.defaultDisplay.displayId
+
         private val GROUND = Color.parseColor("#0D1E19")
         private val FLAP = Color.parseColor("#131614")
         private val CREAM = Color.parseColor("#F2EAD8")

@@ -37,8 +37,30 @@ object HomeRole {
         return ri?.activityInfo?.packageName == c.packageName
     }
 
+    /**
+     * Back to Samsung's own home (One UI Home) on the phone's screen. The home alias is switched
+     * off, so Android cannot pick Couch Phone as home any more and falls back to Samsung's; with root
+     * the home role is also handed straight to it. DeX is unaffected: Couch Phone still opens on the
+     * TV when DeX starts, and the remote's Home key still opens it there.
+     */
+    fun release(a: Activity) {
+        App.setHomeEnabled(a, false)
+        val other = a.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            .map { it.activityInfo.packageName }.filter { it != a.packageName && it != "com.android.settings" }
+            .sortedByDescending { it == SAMSUNG_HOME }.firstOrNull()
+        Thread {
+            if (other != null && Root.available != false)
+                Root.shOrNull("cmd role add-role-holder android.app.role.HOME $other 2>&1 || cmd package set-home-activity $other 2>&1")
+            // Without root, or if that did not take: Android's own Home app setting.
+            if (held(a)) a.runOnUiThread { runCatching { a.startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) } }
+        }.start()
+    }
+
+    private const val SAMSUNG_HOME = "com.sec.android.app.launcher"
+
     /** Opens Android's own chooser. Returns false when this TV offers none. */
     fun request(a: Activity, code: Int = REQUEST): Boolean = try {
+        App.setHomeEnabled(a, true)   // switched off by release()
         if (Build.VERSION.SDK_INT >= 29) {
             val rm = a.getSystemService(RoleManager::class.java)
             if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME)) {

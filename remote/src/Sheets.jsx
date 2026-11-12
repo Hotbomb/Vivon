@@ -5,6 +5,9 @@ import { tick } from './haptics.js';
 import { api } from './api.js';
 import { logoFor } from './appLogos.js';
 import { t, LANGS, choice, setChoice, locale } from './i18n.js';
+import { TvScreenSection, PadSpeedSection } from './TvScreen.jsx';
+import { OpenLink } from './OpenLink.jsx';
+import { UpdateSection } from './Update.jsx';
 
 export const Sheet = forwardRef(function Sheet({ open, onClose, title, children, className = '', fromTop = false, closeDrag, extra = null }, ref) {
   return (
@@ -228,17 +231,34 @@ export function ArrangeSheet({ open, onClose, tvName, hidden }) {
   const [drag, setDrag] = useState(null);   // the package being dragged
   const list = useRef(null);
   const sheet = useRef(null);
+  const [all, setAll] = useState(null);       // every installed app, for "Add an app"
+  const [adding, setAdding] = useState(false);
+  const unhidden = useRef(new Set());         // apps added back from hidden while this sheet is open
 
+  const show = (d) => {
+    const hid = (hidden || []).filter((p) => !unhidden.current.has(p));
+    const pk = (d.apps || []).map((a) => a.package).filter((p) => !hid.includes(p));
+    setNames((n) => ({ ...n, ...Object.fromEntries((d.apps || []).map((a) => [a.package, a.name])) }));
+    setMax(d.dock_max || 10);
+    setRows(pk.length ? [...pk.slice(0, d.line), LINE, ...pk.slice(d.line)] : []);
+  };
   useEffect(() => {
     if (!open) return;
-    setRows(null); setMsg('');
-    api.appOrder().then((d) => {
-      const pk = (d.apps || []).map((a) => a.package).filter((p) => !(hidden || []).includes(p));
-      setNames(Object.fromEntries((d.apps || []).map((a) => [a.package, a.name])));
-      setMax(d.dock_max || 10);
-      setRows(pk.length ? [...pk.slice(0, d.line), LINE, ...pk.slice(d.line)] : []);
-    }).catch((e) => { setRows([]); setMsg(e.message); });
-  }, [open]);
+    setRows(null); setMsg(''); setAdding(false); setAll(null);
+    api.appOrder().then(show).catch((e) => { setRows([]); setMsg(e.message); });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openAdd = () => {
+    tick(); setAdding((a) => !a);
+    if (!all) api.apps().then((d) => setAll((d.apps || []).slice().sort((a, b) => a.name.localeCompare(b.name)))).catch((e) => setMsg(e.message));
+  };
+  const add = (a) => {
+    tick();
+    unhidden.current.add(a.package);
+    api.homeAdd(a.package).then((d) => { show(d); setMsg(t('added_home', { name: a.name })); }).catch((e) => setMsg(e.message));
+  };
+  const onDock = rows ? rows.slice(0, rows.indexOf(LINE)) : [];
+  const hid = (hidden || []).filter((p) => !unhidden.current.has(p));
 
   const save = (next) => {
     let r = next;
@@ -293,6 +313,24 @@ export function ArrangeSheet({ open, onClose, tvName, hidden }) {
         ))}
       </ol>
       {msg && <p className="note arrange-msg" role="status">{msg}</p>}
+      {rows && (
+        <button className="pill glass arrange-open add-app-open" aria-expanded={adding} onClick={openAdd}><Ic.Plus size={18} /> {t('add_app')}</button>
+      )}
+      {adding && (
+        <>
+          <p className="note">{t('add_app_lede')}</p>
+          {!all && <p className="note">{t('loading_apps')}</p>}
+          <ul className="arrange add-apps">
+            {(all || []).filter((a) => !onDock.includes(a.package)).map((a) => (
+              <li key={a.package} className="arrange-row glass">
+                {logoFor({ package: a.package }) ? <img src={logoFor({ package: a.package })} alt="" /> : <span className="arrange-blank">{(a.name || '?').slice(0, 1)}</span>}
+                <b>{a.name}{hid.includes(a.package) && <small className="add-app-tag"> · {t('app_hidden_tag')}</small>}</b>
+                <button className="grip" aria-label={t('add_named', { name: a.name })} onClick={() => add(a)}><Ic.Plus size={20} /></button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </Sheet>
   );
 }
@@ -383,11 +421,14 @@ export function PeopleSheet({ open, onClose, onSaved }) {
   );
 }
 
-export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnds, onSleep, onKey, onText, sleepError, tvs, tvId, onTv, picture, pictureInfo, onPicture, onArrange, onPeople }, ref) {
+export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnds, onSleep, onKey, onText, sleepError, tvs, tvId, onTv, picture, pictureInfo, onPicture, onArrange, onPeople, onConnect, say }, ref) {
   const [typed, setTyped] = useState('');
   const sheetEl = useRef(null);
   const setRefs = (el) => { sheetEl.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
   const closeDrag = usePushUp(sheetEl, onClose);
+  // This TV: the one chosen, or the only one (Couch Phone's is "this-tv", whatever the remote calls it).
+  const cur = tvs?.find((tv) => tv.id === tvId) || (tvs?.length === 1 ? tvs[0] : null);
+  const dex = cur?.kind === 'dex';
   const endsAt = sleepEnds ? new Date(sleepEnds) : null;
   const left = endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 60000)) : 0;
   return (
@@ -405,7 +446,7 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         </section>
       )}
 
-      {tvs?.find((tv) => tv.id === tvId)?.picture && (
+      {cur?.picture && (
         <section className="more-block">
           <h3><Ic.Sparkle size={16} /> {t('picture')}</h3>
           <div className="chips-row" role="radiogroup" aria-label="Picture mode">
@@ -421,7 +462,17 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         </section>
       )}
 
-      <section className={`more-block ${tvs?.length > 1 ? '' : 'first'}`}>
+      {dex && (
+        <div className={`more-grid four ${tvs?.length > 1 ? '' : 'first'}`}>
+          <button className="tile glass" onClick={() => { tick(); onConnect?.('bluetooth'); }}><Ic.Bluetooth /> {t('bluetooth')}</button>
+          <button className="tile glass" onClick={() => { tick(); onConnect?.('wifi'); }}><Ic.Wifi /> {t('wifi')}</button>
+          <button className="tile glass" onClick={() => { tick(); onArrange(); }}><Ic.Grid /> {t('apps_short')}</button>
+          <button className="tile glass" onClick={() => { tick(); onKey('settings'); }}><Ic.Gear /> {t('settings')}</button>
+        </div>
+      )}
+      {dex && <OpenLink say={say} />}
+
+      <section className={`more-block ${tvs?.length > 1 || dex ? '' : 'first'}`}>
         <h3><Ic.Moon size={16} /> {t('sleep_timer')}</h3>
         <div className="chips-row">
           {SLEEP.map((m) => (
@@ -431,24 +482,33 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         <p className="note">{sleepError || (endsAt ? t('turns_off_at', { time: endsAt.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }), n: left }) : t('sleep_note'))}</p>
       </section>
 
-      <section className="more-block">
+      {dex && <PadSpeedSection />}
+      {dex && <TvScreenSection open={open} />}
+
+      {!dex && <section className="more-block">
         <h3><Ic.Keyboard size={16} /> {t('type_on_tv')}</h3>
         <form className="ask-field glass" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) { tick(); onText(typed.trim()); setTyped(''); } }}>
           <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={t('type_placeholder')} enterKeyHint="send" aria-label="Text to type on the TV" />
           <button type="submit" className="round solid small" aria-label={t('send_to_tv')} disabled={!typed.trim()}><Ic.Send size={18} /></button>
         </form>
         <p className="note">{t('type_note')}</p>
-      </section>
+      </section>}
 
-      <div className="more-grid">
+      {!dex && <div className="more-grid">
         <button className="tile glass" onClick={() => { tick(); onKey('captions'); }}><Ic.Captions /> {t('subtitles')}</button>
         <button className="tile glass" onClick={() => { tick(); onKey('input'); }}><Ic.Input /> {t('input')}</button>
         <button className="tile glass" onClick={() => { tick(); onKey('settings'); }}><Ic.Gear /> {t('settings')}</button>
-      </div>
+      </div>}
       <div className="arrange-pair">
-        <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>
+        {!dex && <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>}
         <button className="pill glass arrange-open" onClick={() => { tick(); onPeople(); }}><Ic.People size={18} /> {t('people')}</button>
       </div>
+
+      {dex && <UpdateSection open={open} />}
+
+      {typeof window !== 'undefined' && window.CouchApp && window.CouchApp.disconnect && (
+        <button className="pill glass arrange-open" onClick={() => { tick(); window.CouchApp.disconnect(); }}><Ic.Screen size={18} /> {t('switch_tv')}</button>
+      )}
 
       {/* this phone's language: "Same as the TV" follows the TV home's Home settings */}
       <section className="more-block">
