@@ -1,3 +1,4 @@
+import { makePadSender } from './padSender.js';
 import { useEffect, useRef, useState } from 'react';
 import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
@@ -184,23 +185,14 @@ function zoneAt(r, x, y) {
 const stopTimers = (s) => { if (s) { clearTimeout(s.timer); clearInterval(s.timer); } };
 
 // `offState` is null when the TV can be driven, else 'off' | 'waking' | 'unreachable'.
-// LG's pointer from the pad: a drag moves it, a tap clicks, two fingers scroll. Moves are added up
-// and sent one request at a time, so a slow answer never queues a backlog.
+// The pad's pointer (LG's, or the DeX mouse): a drag moves it, a tap clicks, two fingers scroll.
 const GAIN = 1.8; const SCROLL_GAIN = 1.2; const TAP_MS = 300; const TAP_MOVE = 8;
 function usePointerPad(onPointer) {
-  const acc = useRef({ dx: 0, dy: 0, scroll: 0, click: false });
-  const busy = useRef(false);
-  const flush = () => {
-    if (busy.current) return;
-    const a = acc.current;
-    if (!a.dx && !a.dy && !a.scroll && !a.click) return;
-    const d = { dx: Math.round(a.dx), dy: Math.round(a.dy), scroll: Math.round(a.scroll), click: a.click };
-    acc.current = { dx: a.dx - d.dx, dy: a.dy - d.dy, scroll: a.scroll - d.scroll, click: false };
-    busy.current = true;
-    Promise.resolve(onPointer(d)).catch(() => {}).finally(() => { busy.current = false; flush(); });
-  };
-  const add = (k, v) => { acc.current[k] = k === 'click' ? true : acc.current[k] + v; flush(); };
-  return add;
+  const latest = useRef(onPointer);
+  latest.current = onPointer;
+  const add = useRef(null);
+  if (!add.current) add.current = makePadSender((d) => latest.current(d));
+  return add.current;
 }
 
 export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLivingRoom, onPointer }) {

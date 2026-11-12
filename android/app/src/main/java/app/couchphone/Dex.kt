@@ -104,12 +104,44 @@ object Dex {
         main.post { runCatching { ctx.startActivity(i, opts) }.onFailure { Log.w(TAG, "start on $display", it) } }
     }
 
+    // ---------------------------------------------------------------- DeX's taskbar
+
+    /**
+     * Apps full screen: DeX's own "Auto hide taskbar" switch (Samsung DeX settings, or right-click
+     * the taskbar). The taskbar then stays out of the way until the pointer touches the bottom edge.
+     * Samsung does not document the setting's name, so it is found by looking: a 0/1 setting whose
+     * name says taskbar and auto hide. What was found is kept in `taskbarNote` for the settings API.
+     */
+    @Volatile var taskbarNote: String? = null
+        private set
+    private val autoHide = Regex("(?i)(auto_?hide.*task_?bar|task_?bar.*auto_?hid)")
+
+    fun applyTaskbar() {
+        if (Root.available == false) { taskbarNote = "needs root"; return }
+        val want = if (Store.bool("hide_taskbar", true)) "1" else "0"
+        val out = Root.shOrNull("for n in system secure global; do settings list \$n 2>/dev/null | grep -i -e taskbar -e task_bar | sed \"s/^/\$n /\"; done", 15_000)
+            ?: run { taskbarNote = "could not read the settings"; return }
+        val found = out.lines().mapNotNull { line ->
+            val ns = line.substringBefore(' ', ""); val kv = line.substringAfter(' ', "")
+            val key = kv.substringBefore('=', ""); val value = kv.substringAfter('=', "").trim()
+            if (ns.isEmpty() || key.isEmpty() || !autoHide.containsMatchIn(key) || value !in setOf("0", "1")) null else Triple(ns, key, value)
+        }
+        if (found.isEmpty()) {
+            taskbarNote = "DeX's auto hide switch was not found: turn it on in Settings, Samsung DeX, or right-click the taskbar"
+            Log.i(TAG, "taskbar settings seen: ${out.trim().take(400)}"); return
+        }
+        for ((ns, key, value) in found) if (value != want) Root.shOrNull("settings put $ns $key $want")
+        taskbarNote = (if (want == "1") "hides itself" else "always shown") + " (" + found.joinToString { "${it.first} ${it.second}" } + ")"
+        Log.i(TAG, "taskbar: $taskbarNote")
+    }
+
     // ---------------------------------------------------------------- DeX starting
 
     private val listener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(id: Int) {
             Log.i(TAG, "display added: $id")
             homeDisplay = -1
+            Thread { runCatching { applyTaskbar() } }.start()
             // Give DeX a few seconds to finish starting its desktop, then put the home on top.
             main.postDelayed({ if (Store.bool("open_on_dex", true) && tvDisplay() == id) Thread { openHome() }.start() }, 4000)
         }
@@ -119,6 +151,7 @@ object Dex {
 
     fun watch() {
         dm.registerDisplayListener(listener, main)
+        Thread { runCatching { applyTaskbar() } }.start()
         // Already in DeX (started at boot with the TV plugged in): open the home once.
         if (tvDisplay() != null && Store.bool("open_on_dex", true)) main.postDelayed({ Thread { openHome() }.start() }, 3000)
     }

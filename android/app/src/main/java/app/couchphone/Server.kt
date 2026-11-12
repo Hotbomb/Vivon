@@ -251,6 +251,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         .put("phones", Auth.phoneCount()).put("port", Store.port)
         .put("root", JSONObject(Root.status())).put("dex", JSONObject(Dex.describe()))
         .put("open_on_dex", Store.bool("open_on_dex", true)).put("apps_full_screen", Store.bool("apps_full_screen", true))
+        .put("hide_taskbar", Store.bool("hide_taskbar", true)).put("taskbar", Dex.taskbarNote ?: JSONObject.NULL)
 
     /** {"people": [...]} replaces the list; {"order": [ids]} only reorders it. */
     private fun savePeople(b: JSONObject) {
@@ -287,6 +288,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         b.optString("tv_name").trim().takeIf { it.isNotEmpty() }?.let { Store.putStr("tv_name", it.take(30)) }
         if (b.has("open_on_dex")) Store.putBool("open_on_dex", b.optBoolean("open_on_dex"))
         if (b.has("apps_full_screen")) Store.putBool("apps_full_screen", b.optBoolean("apps_full_screen"))
+        if (b.has("hide_taskbar")) { Store.putBool("hide_taskbar", b.optBoolean("hide_taskbar")); Thread { runCatching { Dex.applyTaskbar() } }.start() }
     }
 
     // ---------------------------------------------------------------- server-sent events

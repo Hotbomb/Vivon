@@ -43,6 +43,7 @@ jobs:
         working-directory: remote
         run: |
           npm ci --no-audit --no-fund
+          npm test
           npm run build
 
       # The TV pointer's helper (android/native/couchmouse.c), a small program the app runs as root.

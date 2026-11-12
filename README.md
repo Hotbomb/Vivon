@@ -63,8 +63,10 @@ settings and paired phones stay.
 on an app** to move it, hide it, or see its info. **Home settings** (the gear) has the look, the
 weather place, and hidden apps. The first row is your favourites.
 
-**If the DeX taskbar still shows on the TV:** on the S10e, open DeX settings and turn on **Auto
-hide taskbar**.
+**Apps full screen:** Couch Phone turns on DeX's own **Auto hide taskbar** by itself (with root), so
+apps fill the TV and the taskbar only comes back when the pointer touches the bottom edge. If the
+taskbar still shows, turn that switch on yourself once: right-click the taskbar (two-finger tap on
+the touchpad), or on the S10e open Settings, Samsung DeX.
 
 ## Safety
 
