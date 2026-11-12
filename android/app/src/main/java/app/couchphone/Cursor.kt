@@ -39,12 +39,12 @@ object Cursor {
     private val dm by lazy { ctx.getSystemService(DisplayManager::class.java) }
 
     private var wm: WindowManager? = null
-    private var root: FrameLayout? = null
+    @Volatile private var root: FrameLayout? = null
     private var arrow: View? = null
     @Volatile private var display = -1
     @Volatile var x = 0f; private set
     @Volatile var y = 0f; private set
-    private var w = 1920; private var h = 1080
+    @Volatile private var w = 1920; @Volatile private var h = 1080
 
     fun init(c: Context) { ctx = c.applicationContext }
 
@@ -71,6 +71,8 @@ object Cursor {
         val d = Dex.target()
         val disp = dm.getDisplay(d) ?: return false
         val size = Point().also { @Suppress("DEPRECATION") disp.getRealSize(it) }   // what apps see, after `wm size`
+        // Already showing on that display at that size: nothing to wait for (the usual case, many times a second).
+        if (root != null && display == d && size.x == w && size.y == h) return true
         var ok = true
         onMain {
             if (root != null && display == d) {

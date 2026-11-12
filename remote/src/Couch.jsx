@@ -207,7 +207,12 @@ export const AirMouseSheet = forwardRef(function AirMouseSheet({ open, onClose, 
   state.current.paused = paused; state.current.speed = speed;
   const listening = useRef(false);
 
-  const onMotion = (e) => {
+  // One listener for the sheet's whole life (a ref), so closing the sheet always removes the same
+  // function start() added: a new one each render kept the old one moving the pointer.
+  const motion = useRef(null);
+  if (!motion.current) motion.current = (e) => onMotionNow.current(e);
+  const onMotionNow = useRef(null);
+  onMotionNow.current = (e) => {
     const r = e.rotationRate; const s = state.current;
     if (r && (r.alpha != null || r.beta != null)) s.seen = true;
     const now = performance.now(); const dt = Math.min(0.1, (now - (s.last || now)) / 1000); s.last = now;
@@ -217,7 +222,7 @@ export const AirMouseSheet = forwardRef(function AirMouseSheet({ open, onClose, 
     const yaw = (r.alpha || 0) + (r.gamma || 0); const pitch = r.beta || 0;
     pointer.move(-curve(yaw) * dt * g, -curve(pitch) * dt * g);
   };
-  const detach = () => { if (listening.current) window.removeEventListener('devicemotion', onMotion); listening.current = false; setRunning(false); };
+  const detach = () => { window.removeEventListener('devicemotion', motion.current); listening.current = false; setRunning(false); };
   useEffect(() => { if (!open) detach(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => detach, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -233,7 +238,7 @@ export const AirMouseSheet = forwardRef(function AirMouseSheet({ open, onClose, 
       } catch (e) { say(t('air_denied'), 'err'); return; }
     }
     state.current.last = 0; state.current.seen = false;
-    window.addEventListener('devicemotion', onMotion);
+    window.addEventListener('devicemotion', motion.current);
     listening.current = true; setRunning(true); setPaused(false);
     pointer.show(true);
     setTimeout(() => { if (listening.current && !state.current.seen) say(t('air_no_motion'), 'err'); }, 3000);

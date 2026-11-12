@@ -107,14 +107,15 @@ export function ConnectSheet({ open, kind, onClose, say }) {
                 <li key={n.ssid} className={`arrange-row glass cn-row ${typing ? 'cn-typing' : ''}`}>
                   <Bars n={n.bars || 0} />
                   <b><span className="cn-name">{n.ssid}</span><small>{n.current ? t('cn_connected') : n.away ? t('cn_away') : [n.saved ? t('cn_saved') : null, open_ ? t('cn_open') : null, n.band].filter(Boolean).join(' · ')}</small></b>
-                  {!open_ && !n.saved && !n.current && <Ic.Lock size={16} />}
+                  {!open_ && !n.current && <Ic.Lock size={16} />}
                   {n.saved && (
                     <button className="pill glass small" disabled={!!busy} onClick={() => twice('forget' + n.ssid, () => act({ action: 'forget', ssid: n.ssid }, n.ssid))}>
                       {armed === 'forget' + n.ssid ? t('cn_tap_again') : t('cn_forget')}</button>
                   )}
                   {!n.current && !n.away && (
                     <button className="pill glass small" disabled={!!busy} onClick={() => {
-                      if (!open_ && !n.saved) { tick(); setPw({ ssid: n.ssid, value: '' }); return; }
+                      // saved ones too: switching to a secured network takes its password again
+                      if (!open_) { tick(); setPw({ ssid: n.ssid, value: '' }); return; }
                       twice('join' + n.ssid, () => act({ action: 'connect', ssid: n.ssid }, n.ssid, t('cn_joining', { ssid: n.ssid })));
                     }}>{busy === n.ssid ? '…' : armed === 'join' + n.ssid ? t('cn_tap_again') : t('cn_join')}</button>
                   )}

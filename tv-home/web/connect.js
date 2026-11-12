@@ -292,7 +292,8 @@
     if (id === "scan") { act({ action: "scan" }); return; }
     if (id === "forget") { if (!arm(r.id, a, t("cn_confirm_forget", { name: a.net.ssid }))) return; act({ action: "forget", ssid: a.net.ssid }); return; }
     if (id === "join") {
-      var n = a.net, needsPw = n.security && n.security !== "open" && n.security !== "owe" && !n.saved;
+      // A saved network too: Android has no command to rejoin one by name, so switching takes its password.
+      var n = a.net, needsPw = n.security && n.security !== "open" && n.security !== "owe";
       if (needsPw) { S2.pw = { ssid: n.ssid, value: "" }; S2.pwShow = false; S2.row += 1; S2.btn = 0; disarm(); paint(); return; }
       if (d.current && !arm(r.id, a, t("cn_confirm_move", { name: n.ssid }))) return;
       act({ action: "connect", ssid: n.ssid }, t("cn_joining", { name: n.ssid })); return;

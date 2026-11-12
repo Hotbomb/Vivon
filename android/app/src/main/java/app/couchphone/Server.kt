@@ -260,7 +260,10 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         val base = "http://$ip:${Store.port}/"
         val pin = Auth.currentPin() ?: Auth.newPin()
         val app = exists("remote-app/couch-remote.apk")
-        val o = ok().put("url", base).put("pin", pin).put("qr_remote", Qr.svg("${base}#cpin=$pin")).put("app", app)
+        // The fingerprint of this TV's certificate authority: the Couch Remote app checks the one it
+        // fetches against it, so nobody else on the Wi-Fi can slip in their own.
+        val fp = java.security.MessageDigest.getInstance("SHA-256").digest(Tls.caDer()).joinToString("") { "%02x".format(it) }
+        val o = ok().put("url", base).put("pin", pin).put("qr_remote", Qr.svg("${base}#cpin=$pin&cafp=$fp")).put("app", app)
         if (app) o.put("app_url", "${base}couch-remote.apk").put("qr_app", Qr.svg("${base}couch-remote.apk"))
         return o
     }
@@ -390,11 +393,12 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
      */
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
         private val fn: (String) -> Unit = { runCatching { send(JSONObject(it).put("event", "now").toString()) } }
-        /** The game controller this remote plays with (Gamepad.kt), 0 for none yet. */
-        @Volatile private var player = 0
+        /** The game controller this remote plays with (Gamepad.kt), null for none yet. */
+        @Volatile private var player: Gamepad.Player? = null
+        @Volatile private var padRetryAt = 0L
         // A controller-only socket (?pad=1) does not need the now playing updates.
         private val padOnly = h.parameters["pad"]?.firstOrNull() == "1"
-        private fun unplug() { if (player > 0) { Gamepad.leave(player); player = 0 } }
+        private fun unplug() { player?.let { Gamepad.leave(it) }; player = null }
         override fun onOpen() { if (!padOnly) { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } } }
         override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn); unplug() }
         override fun onPong(pong: NanoWSD.WebSocketFrame?) {}
@@ -414,11 +418,14 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                         val st = m.optJSONObject("pad")
                         if (st == null) { unplug(); JSONObject().put("ok", true).put("player", 0) }
                         else {
-                            val first = player == 0
-                            if (first) player = Gamepad.join()
-                            Gamepad.state(player, st)
+                            val first = player == null
+                            // a controller that did not start is not tried again on every stick move
+                            if (first && System.currentTimeMillis() < padRetryAt) return
+                            val p = player ?: try { Gamepad.join().also { player = it } }
+                                catch (e: ApiError) { padRetryAt = System.currentTimeMillis() + 10_000; throw e }
+                            Gamepad.state(p, st)
                             if (!first) return
-                            JSONObject().put("ok", true).put("player", player)
+                            JSONObject().put("ok", true).put("player", p.n)
                         }
                     }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")

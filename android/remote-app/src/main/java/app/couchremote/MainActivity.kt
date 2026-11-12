@@ -231,7 +231,8 @@ class MainActivity : Activity() {
         val base = normalise(text)
         if (base == null || (u.scheme != "http" && u.scheme != "https")) { showConnect("That QR code is not a Couch Phone TV's."); return }
         val pin = Regex("cpin=(\\d{6})").find(u.fragment ?: "")?.groupValues?.get(1)
-        openRemote(base, pin)
+        val fp = Regex("cafp=([0-9a-f]{64})").find(u.fragment ?: "")?.groupValues?.get(1)
+        openRemote(base, pin, fp)
     }
 
     // ---------------------------------------------------------------- the remote
@@ -240,7 +241,7 @@ class MainActivity : Activity() {
      * Opens the TV's remote. It first fetches the TV's own certificate over the plain address, then
      * loads the secure one (port + 1), so the page may use the microphone and the phone's motion.
      */
-    private fun openRemote(base: String, pin: String?) {
+    private fun openRemote(base: String, pin: String?, fingerprint: String? = null) {
         stopDiscovery()
         val u = Uri.parse(base)
         val h = u.host ?: return showConnect("That address is not right.")
@@ -253,15 +254,31 @@ class MainActivity : Activity() {
             val reachable = ca != null || runCatching { fetch("http://$h:$port/api/health"); true }.getOrDefault(false)
             main.post {
                 if (!reachable) { showConnect("Can't reach the TV at $h. Is this phone on the same Wi-Fi as the TV?"); return@post }
+                // The TV's certificate authority: from the QR code's fingerprint when there is one,
+                // else the first one seen for this address (it is never swapped silently after).
+                val stored = prefs.getString("ca:$h", null)?.let { Base64.decode(it, Base64.NO_WRAP) }
+                if (ca != null) {
+                    val matches = fingerprint != null && sha256(ca) == fingerprint
+                    when {
+                        fingerprint != null && !matches -> { showConnect("The TV at $h did not prove it is the TV that showed the QR code. Scan it again."); return@post }
+                        matches || stored == null -> prefs.edit().putString("ca:$h", Base64.encodeToString(ca, Base64.NO_WRAP)).apply()
+                        stored != null && !stored.contentEquals(ca) -> {
+                            showConnect("The TV at $h has a new security certificate (Couch Phone reinstalled?). " +
+                                "Scan the QR code on the TV's \"Connect a remote\" screen to trust it.")
+                            return@post
+                        }
+                    }
+                }
                 prefs.edit().putString("base", "http://$h:$port/").putString("last", "http://$h:$port/").apply()
                 found[base]?.first?.let { prefs.edit().putString("last_name", it).apply() }
-                if (ca != null) prefs.edit().putString("ca:$h", Base64.encodeToString(ca, Base64.NO_WRAP)).apply()
                 val secure = prefs.getString("ca:$h", null) != null
                 val page = (if (secure) "https://$h:${port + 1}/" else "http://$h:$port/") + (if (pin != null) "#cpin=$pin" else "")
                 showWeb(h, page)
             }
         }.start()
     }
+
+    private fun sha256(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
 
     private fun fetch(url: String): ByteArray {
         val c = URL(url).openConnection() as HttpURLConnection
@@ -298,7 +315,8 @@ class MainActivity : Activity() {
             }
         }
         w.webChromeClient = object : WebChromeClient() {
-            override fun onPermissionRequest(r: PermissionRequest) { r.grant(r.resources) }
+            // The microphone and the like only for the TV's own page.
+            override fun onPermissionRequest(r: PermissionRequest) { if (r.origin.host == host) r.grant(r.resources) else r.deny() }
         }
         web = w
         setContentView(w)

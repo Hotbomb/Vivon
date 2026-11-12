@@ -92,7 +92,7 @@ object Wifi {
                 if (sec == "enterprise" || sec == "wep") throw ApiError(501, "$ssid needs a sign-in this panel cannot do. Use Wi-Fi settings.")
                 if ((sec == "wpa2" || sec == "wpa3") && pass.isEmpty()) {
                     // A saved network: Android joins it by itself when it is in range; turning Wi-Fi off and on nudges it.
-                    if (ssid in saved()) throw ApiError(409, "Type the password for $ssid, or wait: the phone joins saved networks by itself.")
+                    if (ssid in saved()) throw ApiError(409, "Type the password for $ssid to switch to it (the phone also joins saved networks by itself when the current one goes).")
                     throw ApiError(400, "$ssid needs a password.")
                 }
                 if (sec != "open" && sec != "owe" && pass.length < 8) throw ApiError(400, "A Wi-Fi password has at least 8 characters.")

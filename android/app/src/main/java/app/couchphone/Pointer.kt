@@ -1,9 +1,7 @@
 package app.couchphone
 
 import android.util.Log
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 
 /**
@@ -29,37 +27,11 @@ object Pointer {
         val bin = binary()
         if (bin == null) { lastError = "this build has no mouse helper"; return false }
         if (!Root.openShell()) { lastError = Root.lastError ?: "no root"; return false }
-        // Straight from the app's library folder, or (if the phone will not run it from there) a copy
-        // in /data/local/tmp, the usual place for root helpers.
-        val direct = "exec '${bin.absolutePath}'"
-        val copied = "cp '${bin.absolutePath}' /data/local/tmp/couchmouse && chmod 755 /data/local/tmp/couchmouse && exec /data/local/tmp/couchmouse"
-        return start(direct) || start(copied)
-    }
-
-    private fun start(cmd: String): Boolean {
         return try {
-            val p = ProcessBuilder("su").redirectErrorStream(true).start()
-            val w = OutputStreamWriter(p.outputStream)
-            // If exec itself fails, the shell carries on to the echo, so the answer comes at once.
-            w.write("$cmd; echo 'fail could not run the mouse helper'\n"); w.flush()
-            val r = BufferedReader(InputStreamReader(p.inputStream))
-            var first: String? = null
-            val until = System.currentTimeMillis() + 10_000
-            while (System.currentTimeMillis() < until) {
-                if (r.ready()) { first = r.readLine(); if (first == "ready" || first?.startsWith("fail") == true) break }
-                else if (!p.isAlive) break
-                else Thread.sleep(10)
-            }
-            if (first != "ready") {
-                lastError = "mouse helper did not start: ${first ?: "no answer"}"
-                Log.w(TAG, lastError!!); p.destroy(); return false
-            }
+            val (p, w) = Root.startHelper(Root.nativeCommands(bin), TAG)
             proc = p; input = w; lastError = null
-            Thread {
-                try { while (true) { val l = r.readLine() ?: break; Log.i(TAG, "helper: $l") } } catch (_: Exception) {}
-            }.apply { isDaemon = true }.start()
             true
-        } catch (e: Exception) { lastError = e.message; Log.w(TAG, "start", e); false }
+        } catch (e: Exception) { lastError = "mouse helper did not start: ${e.message}"; Log.w(TAG, lastError!!); false }
     }
 
     @Volatile private var lastUse = 0L

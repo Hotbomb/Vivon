@@ -69,18 +69,28 @@ object Dex {
         val d = target()
         val comp = i.component
         val onTv = d != Display.DEFAULT_DISPLAY && Root.available == true
-        if (onTv) moveToTv(pkg, d)
+        // Only an app that is already open somewhere needs moving and checking; a new one opens on the TV.
+        val before = if (onTv) tasksOf(pkg) else emptyList()
+        if (before.any { it.second != d }) moveToTv(pkg, d, before)
         if (comp != null && rootStart(comp, d)) {
-            if (onTv) {
-                Thread.sleep(800)
-                if (moveToTv(pkg, d) && tasksOf(pkg).any { it.second != d }) {
+            if (before.isNotEmpty()) {
+                Thread.sleep(700)
+                var now = tasksOf(pkg)
+                if (now.any { it.second != d }) {
                     // Still on the phone: close it there (like swiping it away in Recents) and open it again on the TV.
-                    tasksOf(pkg).filter { it.second != d }.forEach { Root.shOrNull("am stack remove ${it.first} 2>&1") }
-                    rootStart(comp, d); Thread.sleep(800)
+                    now.filter { it.second != d }.forEach { Root.shOrNull("am stack remove ${it.first} 2>&1") }
+                    rootStart(comp, d); Thread.sleep(700); now = tasksOf(pkg)
                 }
-                if (tasksOf(pkg).let { t -> t.isNotEmpty() && t.none { it.second == d } })
+                if (now.isNotEmpty() && now.none { it.second == d })
                     throw ApiError(409, "${Tv.label(pkg)} opened on the phone's own screen: Samsung DeX will not show it on the TV. " +
                         "Try Samsung DeX settings, Labs, \"Run any app in Samsung DeX\" or \"Force apps to resize\".")
+            } else if (onTv) {
+                // A fresh start: checked once in the background, so the remote is not kept waiting.
+                Thread {
+                    Thread.sleep(1500)
+                    val t = tasksOf(pkg)
+                    if (t.isNotEmpty() && t.none { it.second == d }) moveToTv(pkg, d, t)
+                }.start()
             }
             return true
         }
@@ -113,8 +123,8 @@ object Dex {
     }
 
     /** Moves the app's tasks that are on another display to the TV. True if any were elsewhere. */
-    private fun moveToTv(pkg: String, d: Int): Boolean {
-        val away = tasksOf(pkg).filter { it.second != d }
+    private fun moveToTv(pkg: String, d: Int, known: List<Pair<Int, Int>>? = null): Boolean {
+        val away = (known ?: tasksOf(pkg)).filter { it.second != d }
         away.forEach { (id, _) -> Root.shOrNull("am display move-stack $id $d 2>&1")?.let { if (it.isNotBlank()) Log.i(TAG, "move $pkg: ${it.trim().take(160)}") } }
         return away.isNotEmpty()
     }

@@ -60,6 +60,17 @@ object Bt {
             grantPermissions()
             if (!allowed()) throw ApiError(403, "Couch Phone may not use Bluetooth yet. Open Couch Phone on the phone once, and allow root in Magisk.")
         }
+        ready()
+    }
+
+    /**
+     * With the permissions already granted (they stay from an earlier start), the listeners and the
+     * hidden-call exemption still have to be set up once per start, root or not.
+     */
+    private fun ready() {
+        if (registered) return
+        if (Build.VERSION.SDK_INT >= 28) runCatching { org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/bluetooth/") }
+        listen()
     }
 
     // ---------------------------------------------------------------- events
@@ -159,6 +170,7 @@ object Bt {
     fun state(): JSONObject {
         val a = adapter ?: return JSONObject().put("available", false).put("on", false)
         if (!allowed()) grantPermissions()
+        if (allowed()) ready()
         val o = JSONObject().put("available", true).put("allowed", allowed()).put("on", a.isEnabled)
             .put("searching", a.isEnabled && (System.currentTimeMillis() < searchingUntil || runCatching { a.isDiscovering }.getOrDefault(false)))
             .put("pairing", pairing ?: JSONObject.NULL).put("note", lastNote ?: JSONObject.NULL)

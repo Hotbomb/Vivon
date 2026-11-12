@@ -83,6 +83,44 @@ object Root {
         return out.toString()
     }
 
+    /**
+     * Starts a long-running root helper program: each command is tried in turn (with `exec`, so the
+     * helper is the su process itself) until one prints "ready". Its later output is logged. Returns
+     * the process and its input; throws with the helper's own words when none starts.
+     */
+    fun startHelper(commands: List<String>, tag: String): Pair<Process, OutputStreamWriter> {
+        if (!openShell()) throw IllegalStateException(lastError ?: "no root")
+        var why = "no answer"
+        for (cmd in commands) {
+            val p = ProcessBuilder("su").redirectErrorStream(true).start()
+            val w = OutputStreamWriter(p.outputStream)
+            // If exec itself fails, the shell carries on to the echo, so the answer comes at once.
+            w.write("$cmd; echo 'fail could not run the helper'\n"); w.flush()
+            val r = BufferedReader(InputStreamReader(p.inputStream))
+            var first: String? = null
+            val until = System.currentTimeMillis() + 10_000
+            while (System.currentTimeMillis() < until) {
+                if (r.ready()) { first = r.readLine(); if (first == "ready" || first?.startsWith("fail") == true) break }
+                else if (!p.isAlive) break
+                else Thread.sleep(10)
+            }
+            if (first == "ready") {
+                Thread { try { while (true) { val l = r.readLine() ?: break; Log.i(tag, "helper: $l") } } catch (_: Exception) {} }
+                    .apply { isDaemon = true }.start()
+                return Pair(p, w)
+            }
+            why = first ?: "no answer"
+            Log.w(tag, "helper did not start: $why")
+            p.destroy()
+        }
+        throw IllegalStateException(why)
+    }
+
+    /** The native helper's two ways to run: from the app's library folder, or a copy in /data/local/tmp. */
+    fun nativeCommands(bin: java.io.File, args: String = ""): List<String> = listOf(
+        "exec '${bin.absolutePath}' $args",
+        "cp '${bin.absolutePath}' /data/local/tmp/couchmouse && chmod 755 /data/local/tmp/couchmouse && exec /data/local/tmp/couchmouse $args")
+
     fun status(): Map<String, Any?> = mapOf("root" to available, "input" to RootInput.running, "error" to lastError)
 
     @Suppress("unused") private fun waitFor(p: Process, ms: Long) = p.waitFor(ms, TimeUnit.MILLISECONDS)
