@@ -55,15 +55,66 @@ object Dex {
         if (!rootStart(comp, d)) plainStart(Intent().setComponent(comp), d)
     }
 
-    /** Opens an app's main screen on the TV. Returns false if it has none. */
+    /**
+     * Opens an app's main screen on the TV. Returns false if it has none.
+     *
+     * An app already open on the phone's own screen would come back there (Android brings back its
+     * task where it is), so it is moved to the TV first, and checked once more after it opens.
+     */
     fun launchPackage(pkg: String): Boolean {
         val pm = ctx.packageManager
         val i = pm.getLaunchIntentForPackage(pkg) ?: pm.getLeanbackLaunchIntentForPackage(pkg) ?: return false
         val d = target()
         val comp = i.component
-        if (comp != null && rootStart(comp, d)) return true
+        val onTv = d != Display.DEFAULT_DISPLAY && Root.available == true
+        if (onTv) moveToTv(pkg, d)
+        if (comp != null && rootStart(comp, d)) {
+            if (onTv) {
+                Thread.sleep(800)
+                if (moveToTv(pkg, d) && tasksOf(pkg).any { it.second != d }) {
+                    // Still on the phone: close it there (like swiping it away in Recents) and open it again on the TV.
+                    tasksOf(pkg).filter { it.second != d }.forEach { Root.shOrNull("am stack remove ${it.first} 2>&1") }
+                    rootStart(comp, d); Thread.sleep(800)
+                }
+                if (tasksOf(pkg).let { t -> t.isNotEmpty() && t.none { it.second == d } })
+                    throw ApiError(409, "${Tv.label(pkg)} opened on the phone's own screen: Samsung DeX will not show it on the TV. " +
+                        "Try Samsung DeX settings, Labs, \"Run any app in Samsung DeX\" or \"Force apps to resize\".")
+            }
+            return true
+        }
         plainStart(i, d)
         return true
+    }
+
+    /** The app's root tasks as (task id, display id), from `am stack list` (root). */
+    private fun tasksOf(pkg: String): List<Pair<Int, Int>> {
+        val out = Root.shOrNull("am stack list 2>&1", 6000) ?: return emptyList()
+        val res = ArrayList<Pair<Int, Int>>()
+        var root = -1; var disp = -1
+        val head = Regex("(?:RootTask|Stack) id=(\\d+).*?displayId=(\\d+)")
+        val task = Regex("taskId=\\d+: ([^/\\s]+)/")
+        for (line in out.lines()) {
+            head.find(line)?.let { root = it.groupValues[1].toInt(); disp = it.groupValues[2].toInt(); return@let }
+            val t = task.find(line) ?: continue
+            if (t.groupValues[1] == pkg && root >= 0 && res.none { it.first == root }) res += root to disp
+        }
+        if (root >= 0) return res
+        // No `am stack` on this build: the activity dump instead ("Display #0", then "* Task{… #12 … A=10189:com.app …").
+        val dump = Root.shOrNull("dumpsys activity activities 2>&1 | grep -E '^Display #|^  \\* Task\\{'", 6000) ?: return res
+        val dRe = Regex("^Display #(\\d+)"); val tRe = Regex("Task\\{\\S+ #(\\d+) .*?[AI]=\\d+:([^\\s}]+)")
+        for (line in dump.lines()) {
+            dRe.find(line)?.let { disp = it.groupValues[1].toInt(); return@let }
+            val t = tRe.find(line) ?: continue
+            if (t.groupValues[2] == pkg && disp >= 0) res += t.groupValues[1].toInt() to disp
+        }
+        return res
+    }
+
+    /** Moves the app's tasks that are on another display to the TV. True if any were elsewhere. */
+    private fun moveToTv(pkg: String, d: Int): Boolean {
+        val away = tasksOf(pkg).filter { it.second != d }
+        away.forEach { (id, _) -> Root.shOrNull("am display move-stack $id $d 2>&1")?.let { if (it.isNotBlank()) Log.i(TAG, "move $pkg: ${it.trim().take(160)}") } }
+        return away.isNotEmpty()
     }
 
     /** Opens a system screen by its action (Bluetooth or Wi-Fi settings) on the TV. */

@@ -22,6 +22,8 @@ import java.lang.reflect.Method;
  * Commands:
  *   k <keycode> <display> <0|1 long press> [meta state, e.g. 4096 for Ctrl]
  *   t <display> <text as base64 UTF-8>
+ *   s <0|2>                 the phone's own screen panel off (0) or on (2), the way scrcpy's
+ *                           "turn screen off" does it: the phone stays awake and the TV keeps going
  *   p                       answers "pong"
  *
  * Original code for couch-phone. Nothing here is copied from another project.
@@ -71,6 +73,9 @@ public final class Injector {
             case "k":
                 key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]), p.length > 4 ? Integer.parseInt(p[4]) : 0);
                 break;
+            case "s":
+                screen(Integer.parseInt(p[1]));
+                break;
             case "t":
                 text(Integer.parseInt(p[1]), new String(Base64.decode(p.length > 2 ? p[2] : "", Base64.DEFAULT), "UTF-8"));
                 break;
@@ -102,6 +107,25 @@ public final class Injector {
         }
         send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, meta), display);
         if (ctrl) send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, 0), display);
+    }
+
+    /**
+     * Powers the phone's built-in panel off or on with SurfaceControl (hidden API, root only). The
+     * TV is an external display with its own token, so it is never touched.
+     */
+    private static void screen(int mode) throws Exception {
+        Class<?> sc = Class.forName("android.view.SurfaceControl");
+        Object token = null;
+        try {
+            token = sc.getMethod("getInternalDisplayToken").invoke(null);
+        } catch (NoSuchMethodException e) {
+            long[] ids = (long[]) sc.getMethod("getPhysicalDisplayIds").invoke(null);
+            if (ids != null && ids.length > 0) token = sc.getMethod("getPhysicalDisplayToken", long.class).invoke(null, ids[0]);
+        }
+        if (token == null) throw new IllegalStateException("no built-in display");
+        sc.getMethod("setDisplayPowerMode", android.os.IBinder.class, int.class).invoke(null, token, mode);
+        System.out.println("screen " + mode);
+        System.out.flush();
     }
 
     /** Types text with the virtual keyboard map. Characters it has no keys for are skipped. */

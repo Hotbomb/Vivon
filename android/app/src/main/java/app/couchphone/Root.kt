@@ -154,6 +154,9 @@ object RootInput {
     fun text(s: String, display: Int) =
         helperSend("t $display " + Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
 
+    /** The phone's own screen panel: off (true) or on. The TV is not affected. */
+    fun phonePanel(off: Boolean) = helperSend("s ${if (off) 0 else 2}")
+
     /** Starts root early (asks Magisk once) so the first remote press is fast. */
     fun warmUp() { Thread { runCatching { synchronized(this) { openHelper() } } }.start() }
 }

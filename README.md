@@ -63,6 +63,14 @@ settings and paired phones stay.
 on an app** to move it, hide it, or see its info. **Home settings** (the gear) has the look, the
 weather place, and hidden apps. The first row is your favourites.
 
+**The phone's own screen** goes fully off while DeX is on the TV (the phone stays awake, so the TV
+keeps going), and comes back when you unplug. Apps that were open on the phone move to the TV when
+you open them from the home. Both need root.
+
+**TV screen** (on the remote, pull down for the TV sheet): the resolution DeX draws at, text and
+icon size, and the phone's screen on or off. If the picture looks soft, also check the TV: set its
+HDMI input to PC or Game mode and its picture size to Just Scan / Screen Fit (no overscan).
+
 **Apps full screen:** Couch Phone turns on DeX's own **Auto hide taskbar** by itself (with root), so
 apps fill the TV and the taskbar only comes back when the pointer touches the bottom edge. If the
 taskbar still shows, turn that switch on yourself once: right-click the taskbar (two-finger tap on

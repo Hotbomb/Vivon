@@ -5,6 +5,7 @@ import { tick } from './haptics.js';
 import { api } from './api.js';
 import { logoFor } from './appLogos.js';
 import { t, LANGS, choice, setChoice, locale } from './i18n.js';
+import { TvScreenSection } from './TvScreen.jsx';
 
 export const Sheet = forwardRef(function Sheet({ open, onClose, title, children, className = '', fromTop = false, closeDrag, extra = null }, ref) {
   return (
@@ -430,6 +431,8 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         </div>
         <p className="note">{sleepError || (endsAt ? t('turns_off_at', { time: endsAt.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }), n: left }) : t('sleep_note'))}</p>
       </section>
+
+      {tvs?.find((tv) => tv.id === tvId)?.kind === 'dex' && <TvScreenSection open={open} />}
 
       <section className="more-block">
         <h3><Ic.Keyboard size={16} /> {t('type_on_tv')}</h3>

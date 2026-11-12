@@ -169,12 +169,12 @@
   var TUCKED_NAMES = /^(screen ?shar|live ?tv|usb|media ?cent|browser|device assistant)/i;
   // The Play Store, under the name most people know it by (in the chosen language).
   var RENAME = { "com.android.vending": "app_store" };
-  // Never shown: home screens, store and system clutter, and Moonlight (a screen tile opens it).
-  // A maker's own clutter (help apps, file browsers) is listed per house in config.json,
-  // home.hide_packages, and added to this list in readConfig().
+  // Never shown: other home screens. (couch-tv also hid Moonlight, Play Games and Google TV, which a
+  // TV opens another way; on the phone they are ordinary apps, so they stay.) A maker's own clutter
+  // is listed per house in config.json, home.hide_packages, and added to this list in readConfig().
   var HIDDEN = [
     "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "app.couchtv.launcher",
-    "com.limelight", "com.google.android.play.games", "com.google.android.videos"
+    "com.sec.android.app.launcher", "com.sec.android.app.desktoplauncher"
   ];
   var GRID_COLS = 12, GRID_MAX = 24;
   var DOCK_APPS = 10;   // Night: apps in the dock before Settings and More apps (home.dock_size)
