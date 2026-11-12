@@ -693,3 +693,6 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .site-form .pill { display: flex; align-items: center; justify-content: center; gap: 8px; flex: none; }
 .sites-edit h3.add-head { padding-left: 0; padding-right: 0; }
 .site-pinned { flex: none; font-size: 13px; color: var(--ink-2); padding-right: 6px; }
+.site-row { flex-wrap: wrap; }
+.site-opens { flex-basis: 100%; display: flex; gap: 6px; }
+.site-opens .chip { flex: 1; height: 34px; font-size: 13px; }

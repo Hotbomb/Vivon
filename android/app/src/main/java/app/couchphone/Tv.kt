@@ -38,7 +38,11 @@ object Tv {
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE -> { volumeKey(code); return KeyEvent.keyCodeToString(code) }
         }
         // Play, pause and skip go to whatever is playing, wherever it is.
-        if (code in MEDIA) { media(code); return KeyEvent.keyCodeToString(code) }
+        if (code in MEDIA) {
+            // the Couch browser in front: its players (in frames too) take the key
+            BrowserActivity.inFront()?.let { it.media(code); return KeyEvent.keyCodeToString(code) }
+            media(code); return KeyEvent.keyCodeToString(code)
+        }
         RootInput.key(code, Dex.target(), hold)
         return KeyEvent.keyCodeToString(code)
     }

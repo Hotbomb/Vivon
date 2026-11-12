@@ -147,13 +147,15 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
             "GET /api/connect" -> json(200, connectInfo())
-            // Website tiles: {"action":"add","name":"Cinejoy","url":"cinejoy.pk"} or {"action":"remove","id":"site:cinejoy"}
+            // Website tiles: {"action":"add","name":"Cinejoy","url":"cinejoy.pk"}, {"action":"remove","id":"site:cinejoy"},
+            // {"action":"set","id":"site:cinejoy","opens":"couch|browser"}
             "GET /api/sites" -> json(200, ok().put("sites", JSONArray(Sites.list().map { it.json().put("id", it.id) })))
             "POST /api/sites" -> {
                 val b = body(s)
                 when (b.optString("action")) {
                     "add" -> { val site = Sites.add(b.optString("name"), b.optString("url")); refreshHomeAfter(s); json(200, ok().put("site", site.json().put("id", site.id))) }
                     "remove" -> { Sites.remove(b.optString("id")); refreshHomeAfter(s); json(200, ok()) }
+                    "set" -> { Sites.setOpens(b.optString("id"), b.optString("opens")); json(200, ok()) }
                     else -> throw ApiError(400, "action must be add or remove")
                 }
             }
@@ -242,7 +244,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                 .put("icon", "/api/app-icon/$pkg")) }
         // website tiles (Sites.kt), listed like apps
         Sites.list().forEach { site -> arr.put(JSONObject().put("id", site.id).put("name", site.name).put("package", site.id).put("colour", "#2A2A30")
-            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url).put("pinned", site.pinned)) }
+            .put("installed", true).put("icon", "/api/app-icon/${site.id}").put("kind", "site").put("url", site.url).put("pinned", site.pinned).put("opens", Sites.opens(site.slug))) }
         return arr
     }
 

@@ -61,6 +61,8 @@ dependencies {
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     // QR codes for "Connect a remote" (Apache-2.0).
     implementation("com.google.zxing:core:3.5.3")
+    // The Couch TV browser: a script in every frame, players included (Apache-2.0).
+    implementation("androidx.webkit:webkit:1.9.0")
 }
 
 // The phone remote (remote/dist) and the TV home page (tv-home/web) live elsewhere in the repo.

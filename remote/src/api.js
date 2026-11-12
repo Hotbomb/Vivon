@@ -107,6 +107,7 @@ export const api = {
   remoteApps: () => call('GET', '/api/remote-apps'),
   addSite: (name, url) => call('POST', '/api/sites', { action: 'add', name, url }, 20000),
   removeSite: (id) => call('POST', '/api/sites', { action: 'remove', id }),
+  setSiteOpens: (id, opens) => call('POST', '/api/sites', { action: 'set', id, opens }),
   saveRemoteApps: (order, hidden) => call('POST', '/api/remote-apps', { order, hidden }),
   startUpdate: () => call('POST', '/api/update', {}, 30000),
   openUrl: (url) => call('POST', '/api/open-url', { url }, 20000),

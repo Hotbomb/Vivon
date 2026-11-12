@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Couch Phone</string>
+    <string name="browser_hint">Arrows: move · OK: open · Back: go back</string>
+    <string name="browser_blocked">An ad was stopped</string>
+    <string name="browser_popup">A pop-up was stopped</string>
+    <string name="browser_player">Player: the arrows and OK go to the player · Back to leave it</string>
+    <string name="browser_player_left">Arrows move between links again</string>
 </resources>

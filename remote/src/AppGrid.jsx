@@ -122,6 +122,15 @@ export function AppGrid({ apps, tvHidden, logoFor, AppIcon, short, onLaunch, onA
                       tick(); setSiteBusy(true);
                       api.removeSite(keyOf(a)).then(() => { setSiteMsg(t('site_removed', { name: a.name })); onAppsChanged?.(); }, (e) => setSiteMsg(e.message)).finally(() => setSiteBusy(false));
                     }}>{t('site_delete')}</button>}
+                    <div className="site-opens" role="radiogroup" aria-label={t('site_opens')}>
+                      {[['couch', t('site_open_couch')], ['browser', t('site_open_brave')]].map(([v, label]) => (
+                        <button key={v} type="button" role="radio" aria-checked={(a.opens || 'couch') === v} disabled={siteBusy}
+                          className={`chip glass ${(a.opens || 'couch') === v ? 'on' : ''}`} onClick={() => {
+                            tick(); setSiteBusy(true);
+                            api.setSiteOpens(keyOf(a), v).then(() => onAppsChanged?.(), (e) => setSiteMsg(e.message)).finally(() => setSiteBusy(false));
+                          }}>{label}</button>
+                      ))}
+                    </div>
                   </li>
                 ))}
               </ul>

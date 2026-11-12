@@ -29,7 +29,16 @@ object Sites {
                     val pinned: Boolean = false, val bitmapPath: String? = null) {
         val id get() = PREFIX + slug
         fun json(): JSONObject = JSONObject().put("slug", slug).put("name", name).put("url", url).put("browser", browser ?: JSONObject.NULL)
-            .put("pinned", pinned)
+            .put("pinned", pinned).put("opens", opens(slug))
+    }
+
+    /** Where a website tile opens: "couch" (the Couch TV browser, the default) or "browser" (Brave, else the usual one). */
+    fun opens(slug: String): String = if (Store.str("site_open_$slug") == "browser") "browser" else "couch"
+
+    fun setOpens(id: String, how: String) {
+        val s = find(id) ?: throw ApiError(404, "That website tile is gone.")
+        if (how != "couch" && how != "browser") throw ApiError(400, "opens must be couch or browser")
+        Store.putStr("site_open_${s.slug}", how)
     }
 
     /** Every website tile: the ones added here, then shortcuts pinned from browsers. */
@@ -119,6 +128,7 @@ object Sites {
     /** Opens the website on the TV, in its browser (Brave), else the usual one. */
     fun open(id: String) {
         val s = find(id) ?: throw ApiError(404, "That website tile is gone.")
+        if (opens(s.slug) == "couch") { BrowserActivity.open(s.url); return }
         val b = s.browser?.takeIf { Tv.hasPackage(it) } ?: BRAVE.takeIf { Tv.hasPackage(it) }
         if (b == null) Tv.openUrl(s.url) else Dex.openUrl(s.url, b)
     }

@@ -70,6 +70,19 @@
             <meta-data android:name="com.samsung.android.dex.launchheight" android:value="0" />
         </activity>
 
+        <!-- The Couch TV browser: website tiles open here, on the TV, with the remote's arrows. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.couchphone.browser"
+            android:resizeableActivity="true"
+            android:hardwareAccelerated="true"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|locale">
+            <meta-data android:name="com.samsung.android.dex.launchwidth" android:value="0" />
+            <meta-data android:name="com.samsung.android.dex.launchheight" android:value="0" />
+        </activity>
+
         <!-- Registers as a home app (launcher), so it can also be the phone's own home. -->
         <activity-alias
             android:name=".HomeAlias"

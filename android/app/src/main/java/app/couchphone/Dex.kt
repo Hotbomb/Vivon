@@ -143,6 +143,19 @@ object Dex {
         plainStart(i, d)
     }
 
+    /** Opens an address in the Couch TV browser (BrowserActivity) on the TV. */
+    fun openInCouch(url: String) {
+        val d = target()
+        val comp = ComponentName(ctx, BrowserActivity::class.java)
+        if (Root.available == true) {
+            val q = "'" + url.replace("'", "'\\''") + "'"
+            val out = Root.shOrNull("am start --display $d --windowingMode 1 -f 0x10000000 -n '${comp.flattenToShortString()}' " +
+                "-a android.intent.action.VIEW -d $q 2>&1", 12_000)
+            if (out != null && !out.contains("Error") && !out.contains("Exception")) return
+        }
+        plainStart(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).setComponent(comp), d)
+    }
+
     /** Opens a system screen by its action (Bluetooth or Wi-Fi settings) on the TV. */
     fun openAction(action: String): Boolean {
         val d = target()

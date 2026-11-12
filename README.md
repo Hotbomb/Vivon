@@ -91,6 +91,14 @@ A B X Y, bumpers, triggers, View, Home and Menu. The TV phone sees a real Xbox-s
 so Steam Link and controller games (Terraria and the like) work with it. Each phone that opens it
 is the next player, up to 4.
 
+**Couch TV browser:** website tiles open in Couch Phone's own TV browser. The remote's arrows move
+a highlight between links, posters, buttons and players (the page scrolls to keep it in view), OK
+opens the highlighted thing, Back goes back. Pop-ups and "click anywhere" ad tabs never open, and
+known ad addresses are not loaded. OK on a player clicks into it (the arrows and OK then go to the
+player until Back); full-screen video fills the TV; the remote's play/pause and skip reach players
+inside frames; leaving the browser pauses them. Each tile can open in Brave instead (Watch, Edit,
+Websites, "Opens in").
+
 **Website tiles:** remote, Watch, Edit, Websites: type an address (like cinejoy.pk) and the site
 becomes a tile with its own icon, on the Watch page and the TV home. It opens in Brave on the TV
 (with Brave's ad blocking), or the usual browser without Brave. Delete it from the same place. Sites pinned with Brave's (or any browser's) "Add to Home
