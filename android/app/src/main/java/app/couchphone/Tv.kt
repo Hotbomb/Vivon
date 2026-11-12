@@ -21,8 +21,17 @@ object Tv {
     val isOn: Boolean get() = power.isInteractive
 
     // ---------- keys and text ----------
-    fun key(name: String, hold: Boolean = false): String {
+    fun key(name: String, hold: Boolean = false, raw: Boolean = false): String {
         val code = Keys.resolve(name) ?: throw ApiError(400, "unknown key: $name")
+        // A browser in front: the arrows glide the pointer and OK clicks, as on a TV browser, so any
+        // website works with the remote's arrows. (raw: the Keyboard's own arrows still move the caret.)
+        if (!raw && browserPointer()) when (code) {
+            KeyEvent.KEYCODE_DPAD_UP -> { Cursor.nudge(0, -1); return "POINTER_UP" }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { Cursor.nudge(0, 1); return "POINTER_DOWN" }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { Cursor.nudge(-1, 0); return "POINTER_LEFT" }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { Cursor.nudge(1, 0); return "POINTER_RIGHT" }
+            KeyEvent.KEYCODE_DPAD_CENTER -> { Cursor.clickHere(right = hold); return "POINTER_CLICK" }
+        }
         when (code) {
             // DeX's own Home key would show Samsung's desktop: open this home instead.
             KeyEvent.KEYCODE_HOME -> { Dex.openHome(); return "HOME" }
@@ -79,10 +88,10 @@ object Tv {
         }
         val scheme = android.net.Uri.parse(url).scheme?.lowercase()
         if (scheme != "http" && scheme != "https") throw ApiError(400, "Only web addresses (http or https) can be opened.")
-        Dex.openUrl(url, BROWSERS.firstOrNull { hasPackage(it) })
+        Dex.openUrl(url, OPEN_IN.firstOrNull { hasPackage(it) })
         return url
     }
-    private val BROWSERS = listOf("com.android.chrome", "com.chrome.beta", "com.sec.android.app.sbrowser", "org.mozilla.firefox")
+    private val OPEN_IN = listOf("com.android.chrome", "com.chrome.beta", "com.sec.android.app.sbrowser", "org.mozilla.firefox")
 
     /**
      * Types text on the TV. Plain letters, numbers and symbols are typed key by key. Text with
@@ -135,6 +144,22 @@ object Tv {
     }.getOrDefault(pkg)
 
     fun hasPackage(pkg: String) = try { ctx.packageManager.getPackageInfo(pkg, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
+
+    val BROWSERS = setOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.sec.android.app.sbrowser",
+        "org.mozilla.firefox", "com.brave.browser", "com.microsoft.emmx", "com.opera.browser", "com.kiwibrowser.browser")
+
+    @Volatile private var frontAt = 0L
+    @Volatile private var frontNow: String? = null
+    /** The app in front, looked up at most every 2.5 seconds (each look is a root command). */
+    fun frontCached(): String? {
+        val n = System.currentTimeMillis()
+        if (n - frontAt > 2500) { frontNow = frontPackage(); frontAt = n }
+        return frontNow
+    }
+
+    /** Arrows as a pointer: a browser is in front and "Arrows in browsers" is Pointer (the default). */
+    private fun browserPointer(): Boolean =
+        Store.str("browser_dpad", "pointer") == "pointer" && Dex.tvDisplay() != null && frontCached() in BROWSERS && Cursor.available()
 
     /** The app in front on the TV, from the activity manager (root). Null when unknown. */
     fun frontPackage(): String? {

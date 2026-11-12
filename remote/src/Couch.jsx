@@ -95,7 +95,7 @@ export const KeyboardSheet = forwardRef(function KeyboardSheet({ open, onClose, 
   const send = useQueue(say);
   useEffect(() => { if (!open) { setVal(''); prev.current = []; } }, [open]);
 
-  const key = (k) => send(() => api.key(k));
+  const key = (k) => send(() => api.key(k, false, true));
   const onChange = (e) => {
     const v = e.target.value;
     const now = Array.from(v); const was = prev.current;   // by character, so an emoji is one backspace

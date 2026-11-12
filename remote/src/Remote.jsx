@@ -200,6 +200,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   const togglePointer = () => { const v = !pointerOn; setPointerOn(v); try { localStorage.setItem('tv.pointer', v ? '1' : '0'); } catch (e) { /* */ } };
   const addPointer = usePointerPad(onPointer || (() => {}));
   const touches = useRef(new Map());
+  const spotFrame = useRef(0);
   const pg = useRef(null);
   const usePointerMode = Boolean(onPointer) && pointerOn;
   const ref = useRef(null);
@@ -229,8 +230,10 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     // each finger from where it started, so a second finger landing elsewhere is still a tap
     if (Math.hypot(e.clientX - last.sx, e.clientY - last.sy) > TAP_MOVE) s.moved = true;
     if (e.pointerId !== s.id) return;   // with two fingers, the first one drives the scroll
+    // the glow under the finger: once a frame at most, so drawing never holds up the moves
     const r = ref.current.getBoundingClientRect();
-    setSpot({ x: e.clientX - r.left, y: e.clientY - r.top });
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    if (!spotFrame.current) spotFrame.current = requestAnimationFrame(() => { spotFrame.current = 0; setSpot(at); });
     if (s.two) {
       // two fingers: up and down scroll, left and right scroll sideways (whichever way the fingers mostly go)
       if (Math.abs(dy) >= Math.abs(dx)) addPointer('scroll', dy * SCROLL_GAIN); else addPointer('hscroll', dx * SCROLL_GAIN);

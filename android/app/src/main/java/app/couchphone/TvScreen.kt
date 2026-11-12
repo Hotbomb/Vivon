@@ -158,7 +158,7 @@ object TvScreen {
     /** What the TV shows now, and the choices. */
     fun describe(): JSONObject {
         val o = JSONObject().put("phone_screen_off", phoneOffWanted)
-            .put("chrome_nav", if (Tv.hasPackage("com.android.chrome") && Root.available == true) ChromeNav.on() else JSONObject.NULL)
+            .put("browser_dpad", Store.str("browser_dpad", "pointer"))
         val d = Dex.tvDisplay() ?: return o.put("tv", false)
         o.put("tv", true)
         dm.getDisplay(d)?.let { disp ->
@@ -193,7 +193,15 @@ object TvScreen {
             if (!b.optBoolean("phone_screen_off")) panelOff = true   // so applyPhone turns it on
             Thread { applyPhone() }.start()
         }
-        if (b.has("chrome_nav")) ChromeNav.set(b.optBoolean("chrome_nav"))
+        // The remote's arrows in browsers: "pointer" (they glide the pointer, OK clicks), "links"
+        // (Chrome's own spatial navigation, see ChromeNav.kt) or "keys" (plain arrow keys: scrolling).
+        if (b.has("browser_dpad")) {
+            val m = b.optString("browser_dpad")
+            if (m !in setOf("pointer", "links", "keys")) throw ApiError(400, "browser_dpad must be pointer, links or keys")
+            val was = Store.str("browser_dpad", "pointer")
+            if (m == "links" || was == "links") runCatching { ChromeNav.set(m == "links") }.onFailure { if (m == "links") throw it }
+            Store.putStr("browser_dpad", m)
+        }
         if (!b.has("size") && !b.has("density")) return
         val d = Dex.tvDisplay() ?: throw ApiError(409, "DeX is not on the TV right now.")
         if (b.has("size")) {

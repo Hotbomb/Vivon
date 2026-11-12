@@ -95,9 +95,11 @@ is the next player, up to 4.
 when a newer release is out on GitHub. OK (or Update) downloads it and installs it with root;
 Couch Phone starts again by itself.
 
-**Arrows in Chrome:** remote's TV sheet, TV screen, "The arrows and OK in Chrome": *Move between
-links* turns on Chrome's own spatial navigation (with root), so the arrows jump between links,
-buttons and posters on any website and OK opens them, like a TV browser.
+**Arrows in a browser:** while Chrome (or another browser) is in front, the remote's arrows glide
+the TV pointer (hold one to go faster), OK clicks, holding OK right-clicks, and pushing past the edge
+scrolls the page, so any website works with the arrows. Remote's TV sheet, TV screen, "The arrows
+and OK in a browser": *Move the pointer* (default), *Jump between links* (Chrome's own spatial
+navigation, set up with root; Chrome may ignore it) or *Arrow keys*.
 
 **Power button** (top right of the remote): stops the picture to the TV. Most TVs then show "no
 signal" and go to standby by themselves, and the phone saves battery. **Turn on the TV** on the

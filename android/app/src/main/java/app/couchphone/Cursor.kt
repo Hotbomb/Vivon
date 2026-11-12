@@ -111,49 +111,121 @@ object Cursor {
         return ok && root != null
     }
 
-    private fun place(glide: Boolean = false) {
+    private fun place() {
         val a = arrow ?: return
         val tip = a.layoutParams.width / 13f * 0.7f   // the arrow's tip sits this far into its view
-        if (glide) {
-            // the remote sends about 60 moves a second; gliding over one frame hides the Wi-Fi's unevenness
-            a.animate().translationX(x - tip).translationY(y - tip).setDuration(30).setInterpolator(android.view.animation.LinearInterpolator()).start()
-        } else { a.animate().cancel(); a.translationX = x - tip; a.translationY = y - tip }
+        a.translationX = x - tip; a.translationY = y - tip
     }
 
     private fun used() { main.removeCallbacks(hide); main.postDelayed(hide, 3 * 60_000L) }
 
-    private var scrollRest = 0f
+    // ---------------------------------------------------------------- moving at the finger's pace
+    //
+    // Wi-Fi delivers the remote's moves in bursts (a phone's Wi-Fi saves power by sending in batches),
+    // so drawing each burst when it lands makes the pointer jump to where the finger already is. The
+    // remote stamps each move with its own clock ("t", ms); here every move is replayed at that pace,
+    // a little behind the finger (as little as the Wi-Fi allows), so the pointer moves as the finger did: smooth, at its speed.
+    // Clicks, scrolls and buttons wait in the same line, so they land where the pointer is by then.
+
+    private const val MIN_BUFFER = 40L    // ms behind the finger, at the least (steady Wi-Fi)
+    private const val MAX_BUFFER = 180L   // and at the most (Wi-Fi sending in bursts)
+    private class Step(val due: Long, val seq: Long, val dx: Float, val dy: Float, val act: (() -> Unit)?)
+    private val steps = java.util.concurrent.PriorityBlockingQueue<Step>(64, compareBy<Step>({ it.due }, { it.seq }))
+    private val wake = Object()
+    @Volatile private var seq = 0L
+    @Volatile private var lastDue = 0L
+    private var player: Thread? = null
+    // (local time - remote time) over the last 2 seconds: the smallest is the least delayed delivery
+    private val offsets = ArrayDeque<Pair<Long, Double>>()
+
+    private fun now() = android.os.SystemClock.uptimeMillis()
+
+    @Synchronized private fun dueFor(t: Double, now: Long): Long {
+        val off = now - t
+        offsets.addLast(now to off)
+        while (offsets.isNotEmpty() && now - offsets.first().first > 2000) offsets.removeFirst()
+        val min = offsets.minOf { it.second }
+        // How unevenly the Wi-Fi delivers (90th percentile of the extra delay), plus a little: just
+        // enough waiting that no move arrives after its turn, so the pointer never jumps. Good Wi-Fi:
+        // about 45 ms behind the finger; Wi-Fi that sends in bursts: up to 180 ms, but smooth.
+        val jitter = offsets.map { it.second - min }.sorted()
+        val buffer = (jitter[(jitter.size * 9) / 10].toLong() + 15).coerceIn(MIN_BUFFER, MAX_BUFFER)
+        return (t + min).toLong() + buffer
+    }
+
+    private fun add(due: Long, dx: Float, dy: Float, act: (() -> Unit)? = null) {
+        val n = now()
+        val d = due.coerceIn(n, n + 400)
+        synchronized(this) { seq += 1; if (d > lastDue) lastDue = d; steps.add(Step(d, seq, dx, dy, act)) }
+        startPlayer()
+        synchronized(wake) { wake.notifyAll() }
+    }
+
+    /** After every move already in line: clicks and scrolls happen where the pointer will be. */
+    private fun then(act: () -> Unit) = add(maxOf(now(), lastDue), 0f, 0f, act)
+
+    @Synchronized private fun startPlayer() {
+        if (player?.isAlive == true) return
+        player = Thread {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY)
+            while (true) {
+                try {
+                    val head = steps.peek()
+                    if (head == null) { synchronized(wake) { wake.wait(1000) }; continue }
+                    val n = now()
+                    if (head.due > n) { synchronized(wake) { wake.wait((head.due - n).coerceIn(1, 16)) }; continue }
+                    var dx = 0f; var dy = 0f
+                    while (true) {
+                        val s = steps.peek() ?: break
+                        if (s.due > n) break
+                        steps.poll()
+                        if (s.act != null) {
+                            if (dx != 0f || dy != 0f) { moveBy(dx, dy); dx = 0f; dy = 0f }
+                            runCatching { s.act.invoke() }.onFailure { Log.w(TAG, "pointer action", it) }
+                        } else { dx += s.dx; dy += s.dy }
+                    }
+                    if (dx != 0f || dy != 0f) moveBy(dx, dy)
+                    Thread.sleep(4)
+                } catch (e: InterruptedException) { return@Thread } catch (e: Exception) { Log.w(TAG, "pointer", e) }
+            }
+        }.apply { isDaemon = true; name = "couch-pointer"; start() }
+    }
+
+    private fun moveBy(dx: Float, dy: Float) {
+        x = (x + dx).coerceIn(0f, w - 1f); y = (y + dy).coerceIn(0f, h - 1f)
+        main.post { place() }
+        runCatching { RootInput.mouseMove(display, x, y) }
+    }
 
     /**
-     * One message from the remote: {"dx":4,"dy":-2,"scroll":30,"hscroll":0,"click":true,
+     * One message from the remote: {"dx":4,"dy":-2,"t":123456.7,"scroll":30,"hscroll":0,"click":true,
      * "button":"left|right|middle","action":"click|down|up","show":true|false}
      */
     fun handle(b: JSONObject) {
         if (b.has("show") && !b.optBoolean("show")) { main.removeCallbacks(hide); onMain { removeView() }; return }
         if (!ensure()) throw ApiError(503, "The pointer cannot be drawn on the TV. Open Couch Phone on the phone once, and allow root in Magisk.")
         used()
-        val d = display
         val dx = b.optDouble("dx", 0.0).toFloat(); val dy = b.optDouble("dy", 0.0).toFloat()
         if (dx != 0f || dy != 0f) {
-            x = (x + dx).coerceIn(0f, w - 1f); y = (y + dy).coerceIn(0f, h - 1f)
-            main.post { place(glide = true) }
-            RootInput.mouseMove(d, x, y)
+            val n = now()
+            val t = b.optDouble("t", Double.NaN)
+            add(if (t.isNaN()) n else dueFor(t, n), dx, dy)
         }
         val sc = b.optDouble("scroll", 0.0).toFloat()
         val hs = b.optDouble("hscroll", 0.0).toFloat()
         if (sc != 0f || hs != 0f) {
             // Touchpad pixels to wheel clicks (about 40 a click), like a phone's screen: fingers up move
             // the page up (the wheel down), fingers left move it left (the wheel right).
-            RootInput.mouseWheel(d, x, y, sc / 40f, -hs / 40f)
+            then { RootInput.mouseWheel(display, x, y, sc / 40f, -hs / 40f) }
         }
-        if (b.optBoolean("click")) click(d, 1)
+        if (b.optBoolean("click")) then { click(display, 1) }
         if (b.has("button")) {
             val bit = when (b.optString("button", "left")) { "right", "r" -> 2; "middle", "m" -> 4; "left", "l" -> 1
                 else -> throw ApiError(400, "button must be left, right or middle") }
             when (b.optString("action", "click")) {
-                "down" -> RootInput.mouseButton(d, x, y, bit, true)
-                "up" -> RootInput.mouseButton(d, x, y, bit, false)
-                else -> click(d, bit)
+                "down" -> then { RootInput.mouseButton(display, x, y, bit, true) }
+                "up" -> then { RootInput.mouseButton(display, x, y, bit, false) }
+                else -> then { click(display, bit) }
             }
         }
     }
@@ -162,6 +234,41 @@ object Cursor {
         RootInput.mouseButton(d, x, y, bit, true)
         Thread.sleep(20)
         RootInput.mouseButton(d, x, y, bit, false)
+    }
+
+    // ---------------------------------------------------------------- the remote's arrows in a browser
+
+    @Volatile private var lastNudge = 0L
+    @Volatile private var lastStep = 0f
+
+    /**
+     * An arrow press while a browser is in front: the pointer glides that way (a held arrow repeats
+     * and speeds up, as on a TV browser); at the edge of the screen the page scrolls instead.
+     */
+    fun nudge(dirX: Int, dirY: Int) {
+        if (!ensure()) throw ApiError(503, "The pointer cannot be drawn on the TV.")
+        used()
+        val n = now()
+        val base = h * 0.05f
+        val step = if (n - lastNudge < 450) (lastStep * 1.3f).coerceAtMost(h * 0.18f) else base
+        lastNudge = n; lastStep = step
+        val atEdge = (dirX < 0 && x <= 1f) || (dirX > 0 && x >= w - 2f) || (dirY < 0 && y <= 1f) || (dirY > 0 && y >= h - 2f)
+        if (atEdge) {
+            // pushing past the edge scrolls the page that way
+            then { RootInput.mouseWheel(display, x, y, -dirY * 3f, dirX * 3f) }
+            return
+        }
+        // glide over 130 ms, in 8 ms steps, starting after anything still in line
+        val start = maxOf(n, lastDue)
+        val parts = 16
+        for (i in 1..parts) add(start + i * 8L, dirX * step / parts, dirY * step / parts)
+    }
+
+    /** OK in a browser: a click where the pointer is (held: a right click). */
+    fun clickHere(right: Boolean = false) {
+        if (!ensure()) throw ApiError(503, "The pointer cannot be drawn on the TV.")
+        used()
+        then { click(display, if (right) 2 else 1) }
     }
 
     /** The arrow: white with a dark edge, its tip at the view's top left corner (the point that clicks). */

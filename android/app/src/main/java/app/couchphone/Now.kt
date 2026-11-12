@@ -61,7 +61,7 @@ object Now {
         loop.scheduleWithFixedDelay({
             try {
                 if (listeners.isEmpty()) return@scheduleWithFixedDelay
-                front = Tv.frontPackage()
+                front = Tv.frontCached()
                 val p = payload(); val sig = p.toString()
                 if (sig != lastSig) { lastSig = sig; listeners.forEach { runCatching { it(sig) } } }
             } catch (_: Exception) {}

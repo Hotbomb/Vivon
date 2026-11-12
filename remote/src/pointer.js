@@ -41,6 +41,8 @@ function take() {
   if (dy) { d.dy = dy; acc.dy -= dy; }
   if (sc) { d.scroll = sc; acc.scroll -= sc; }
   if (hs) { d.hscroll = hs; acc.hscroll -= hs; }
+  // the remote's clock: the TV replays moves at the finger's pace (Cursor.kt)
+  if (d.dx || d.dy) d.t = Math.round(performance.now() * 10) / 10;
   if (queue.length) Object.assign(d, queue.shift());
   return Object.keys(d).length ? d : null;
 }

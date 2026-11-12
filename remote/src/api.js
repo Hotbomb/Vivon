@@ -96,7 +96,8 @@ export const api = {
   config: () => call('GET', '/api/config'),
   screens: () => call('GET', '/api/screens'),
   sleep: () => call('GET', '/api/sleep'),
-  key: (key, hold = false) => call('POST', '/api/key', hold ? { key, hold: true } : { key }),
+  // raw: an arrow from the Keyboard moves the caret even in a browser (not the TV's pointer)
+  key: (key, hold = false, raw = false) => call('POST', '/api/key', { key, ...(hold ? { hold: true } : {}), ...(raw ? { raw: true } : {}) }),
   text: (text) => call('POST', '/api/text', { text }),
   launch: (app) => call('POST', '/api/launch', { app }),
   pointer: (d) => call('POST', '/api/pointer', d, 5000),

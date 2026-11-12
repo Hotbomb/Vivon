@@ -61,16 +61,14 @@ export function TvScreenSection({ open }) {
         <button role="radio" aria-checked={info.phone_screen_off} disabled={busy} className={`chip glass ${info.phone_screen_off ? 'on' : ''}`} onClick={() => set({ phone_screen_off: true })}>{t('phone_screen_off')}</button>
         <button role="radio" aria-checked={!info.phone_screen_off} disabled={busy} className={`chip glass ${!info.phone_screen_off ? 'on' : ''}`} onClick={() => set({ phone_screen_off: false })}>{t('phone_screen_on')}</button>
       </div>
-      {info.chrome_nav !== null && info.chrome_nav !== undefined && (
-        <>
-          <p className="note">{t('chrome_nav')}</p>
-          <div className="chips-row" role="radiogroup" aria-label={t('chrome_nav')}>
-            <button role="radio" aria-checked={!info.chrome_nav} disabled={busy} className={`chip glass ${!info.chrome_nav ? 'on' : ''}`} onClick={() => set({ chrome_nav: false })}>{t('chrome_nav_scroll')}</button>
-            <button role="radio" aria-checked={info.chrome_nav} disabled={busy} className={`chip glass ${info.chrome_nav ? 'on' : ''}`} onClick={() => set({ chrome_nav: true })}>{t('chrome_nav_links')}</button>
-          </div>
-          <p className="note">{t('chrome_nav_note')}</p>
-        </>
-      )}
+      <p className="note">{t('browser_dpad')}</p>
+      <div className="chips-row chips-wrap" role="radiogroup" aria-label={t('browser_dpad')}>
+        {[['pointer', t('bdpad_pointer')], ['links', t('bdpad_links')], ['keys', t('bdpad_keys')]].map(([v, label]) => (
+          <button key={v} role="radio" aria-checked={(info.browser_dpad || 'pointer') === v} disabled={busy}
+            className={`chip glass ${(info.browser_dpad || 'pointer') === v ? 'on' : ''}`} onClick={() => set({ browser_dpad: v })}>{label}</button>
+        ))}
+      </div>
+      <p className="note">{t('bdpad_' + (info.browser_dpad || 'pointer') + '_note')}</p>
       {sig && <p className="note">{t('tv_signal', { w: sig.w, h: sig.h, fps: sig.fps })}{bigger ? ' ' + t('tv_signal_more', { w: bigger.w, h: bigger.h }) : ''}</p>}
       {msg && <p className="note">{msg}</p>}
     </section>

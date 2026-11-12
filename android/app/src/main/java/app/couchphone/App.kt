@@ -125,6 +125,7 @@ class BridgeService : Service() {
     private var server: Server? = null
     private var secureServer: Server? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var lowLatency: WifiManager.WifiLock? = null
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -141,6 +142,8 @@ class BridgeService : Service() {
         val wm = applicationContext.getSystemService(WifiManager::class.java)
         @Suppress("DEPRECATION")
         wifiLock = runCatching { wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "couchphone").apply { acquire() } }.getOrNull()
+        // Low latency Wi-Fi (no power-save batching), for the remote's pointer and controller.
+        lowLatency = runCatching { wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "couchphone-low-latency").apply { acquire() } }.getOrNull()
         startServer()
         Now.start()
         Dex.watch()
@@ -191,7 +194,7 @@ class BridgeService : Service() {
     override fun onDestroy() {
         server?.stop(); server = null
         secureServer?.stop(); secureServer = null
-        runCatching { wifiLock?.release() }
+        runCatching { wifiLock?.release() }; runCatching { lowLatency?.release() }
         super.onDestroy()
     }
 }

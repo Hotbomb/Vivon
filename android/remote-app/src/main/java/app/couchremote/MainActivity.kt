@@ -100,8 +100,16 @@ class MainActivity : Activity() {
         setContentView(ScrollView(this).apply { setBackgroundColor(GROUND); addView(col) })
     }
 
-    override fun onResume() { super.onResume(); web?.onResume(); if (web == null) startDiscovery() }
-    override fun onPause() { super.onPause(); web?.onPause(); stopDiscovery() }
+    // While the remote is on screen, this phone's Wi-Fi skips its power saving (which sends in
+    // batches): the TV pointer and the controller then follow the finger without bunching.
+    private var fast: WifiManager.WifiLock? = null
+    override fun onResume() {
+        super.onResume(); web?.onResume(); if (web == null) startDiscovery()
+        if (fast == null && Build.VERSION.SDK_INT >= 29) fast = runCatching {
+            applicationContext.getSystemService(WifiManager::class.java).createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "couch-remote").apply { setReferenceCounted(false); acquire() }
+        }.getOrNull()
+    }
+    override fun onPause() { super.onPause(); web?.onPause(); stopDiscovery(); runCatching { fast?.release() }; fast = null }
     override fun onDestroy() { stopDiscovery(); speech?.destroy(); web?.destroy(); super.onDestroy() }
 
     // ---------------------------------------------------------------- the connect screen

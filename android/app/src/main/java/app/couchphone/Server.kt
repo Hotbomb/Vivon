@@ -134,7 +134,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "POST /api/key" -> {
                 val b = body(s)
                 val key = b.optString("key").ifEmpty { throw ApiError(400, "key is required") }
-                json(200, ok().put("key", Tv.key(key, b.optBoolean("hold"))))
+                json(200, ok().put("key", Tv.key(key, b.optBoolean("hold"), b.optBoolean("raw"))))
             }
             "POST /api/text" -> {
                 val t = body(s).optString("text").ifEmpty { throw ApiError(400, "text is required") }
