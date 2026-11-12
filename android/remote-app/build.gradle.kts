@@ -49,4 +49,6 @@ android {
 dependencies {
     // Scanning the TV's QR code with the camera (Apache-2.0).
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // The scanner asks for the camera with these, and only declares them, so they must come along.
+    implementation("androidx.core:core:1.13.1")
 }

@@ -127,7 +127,6 @@ class MainActivity : Activity() {
     private fun showConnect(error: String?) {
         web?.let { w -> w.stopLoading(); w.destroy() }
         web = null; host = null
-        landscape(false)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(36), dp(24), dp(24)) }
         col.addView(text("Couch Remote", 32f, INK, true))
         col.addView(text("The remote for your Couch Phone TV.", 16f, INK_2))
@@ -159,6 +158,7 @@ class MainActivity : Activity() {
         col.addView(field)
         col.addView(button("Connect") { go() })
         setContentView(ScrollView(this).apply { setBackgroundColor(GROUND); addView(col) })
+        landscape(false)   // back from the controller: upright, with the bars
         startDiscovery()
     }
 
@@ -380,6 +380,8 @@ class MainActivity : Activity() {
     private fun landscape(on: Boolean) = runCatching { landscapeNow(on) }
 
     private fun landscapeNow(on: Boolean) {
+        // Before the first setContentView there is no window to change (it crashed here at start).
+        if (window.peekDecorView() == null) return
         requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 30) {
