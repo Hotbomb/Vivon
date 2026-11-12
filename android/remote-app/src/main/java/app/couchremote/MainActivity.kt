@@ -71,8 +71,33 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        // If the app ever stops by itself, the next start shows why (to send to whoever looks after it).
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { prefs.edit().putString("crash", android.util.Log.getStackTraceString(e).take(4000)).commit() }
+            before?.uncaughtException(t, e)
+        }
+        val crash = prefs.getString("crash", null)
+        if (crash != null) { prefs.edit().remove("crash").remove("base").apply(); showCrash(crash); return }
         val saved = prefs.getString("base", null)
-        if (saved != null) openRemote(saved, null) else showConnect(null)
+        try { if (saved != null) openRemote(saved, null) else showConnect(null) }
+        catch (e: Exception) { prefs.edit().remove("base").apply(); showCrash(android.util.Log.getStackTraceString(e)) }
+    }
+
+    /** What went wrong last time, with a button to copy it. */
+    private fun showCrash(trace: String) {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(36), dp(24), dp(24)) }
+        col.addView(text("Couch Remote stopped last time", 24f, INK, true))
+        col.addView(text("Please send this to whoever set up Couch Phone. Then tap Continue.", 15f, INK_2))
+        col.addView(text(trace, 12f, INK_2).apply { setTextIsSelectable(true); typeface = Typeface.MONOSPACE; setPadding(0, dp(12), 0, dp(12)) })
+        col.addView(button("Copy the details", solid = true) {
+            runCatching {
+                getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Couch Remote", "Couch Remote ${BuildConfig.VERSION_NAME}\n$trace"))
+            }
+        })
+        col.addView(button("Continue") { showConnect(null) })
+        setContentView(ScrollView(this).apply { setBackgroundColor(GROUND); addView(col) })
     }
 
     override fun onResume() { super.onResume(); web?.onResume(); if (web == null) startDiscovery() }
@@ -169,7 +194,7 @@ class MainActivity : Activity() {
         if (discovery != null || web != null) return
         val m = getSystemService(NsdManager::class.java) ?: return
         multicast = runCatching {
-            getSystemService(WifiManager::class.java).createMulticastLock("couch-remote").apply { setReferenceCounted(false); acquire() }
+            applicationContext.getSystemService(WifiManager::class.java).createMulticastLock("couch-remote").apply { setReferenceCounted(false); acquire() }
         }.getOrNull()
         val l = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(type: String) {}
@@ -180,6 +205,7 @@ class MainActivity : Activity() {
             override fun onServiceFound(info: NsdServiceInfo) { main.post { toResolve.addLast(info); resolveNext() } }
         }
         runCatching { m.discoverServices("_couchphone._tcp", NsdManager.PROTOCOL_DNS_SD, l); nsd = m; discovery = l }
+            .onFailure { looking?.text = "This phone could not look for TVs. Scan the QR code instead." }
     }
 
     // One at a time: older Androids refuse a second resolve while one is running.
@@ -351,7 +377,9 @@ class MainActivity : Activity() {
     }
 
     /** The controller: sideways, full screen and kept awake; back to normal after. */
-    private fun landscape(on: Boolean) {
+    private fun landscape(on: Boolean) = runCatching { landscapeNow(on) }
+
+    private fun landscapeNow(on: Boolean) {
         requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 30) {

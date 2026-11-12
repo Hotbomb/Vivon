@@ -35,3 +35,10 @@ test('a tap sends one click', async () => {
   add('click'); await settle();
   assert.equal(sent.filter((d) => d.click).length, 1);
 });
+
+test('two fingers sideways: horizontal scroll is sent too', async () => {
+  const sent = [];
+  const add = makePadSender((d) => { sent.push(d); return Promise.resolve(); });
+  add('hscroll', 30); await settle();
+  assert.equal(sent.reduce((n, d) => n + (d.hscroll || 0), 0), 30);
+});

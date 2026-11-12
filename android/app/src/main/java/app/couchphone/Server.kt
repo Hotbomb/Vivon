@@ -145,6 +145,9 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
             "GET /api/connect" -> json(200, connectInfo())
+            // Updating Couch Phone itself from the newest release on GitHub (Updater.kt).
+            "GET /api/update" -> json(200, ok(Updater.summary()))
+            "POST /api/update" -> json(200, ok(Updater.start()))
             "GET /api/battery" -> json(200, ok(App.battery()))
             "GET /api/display" -> json(200, ok(TvScreen.describe()))
             "POST /api/display" -> { TvScreen.set(body(s)); json(200, ok(TvScreen.describe())) }
@@ -265,6 +268,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         val fp = java.security.MessageDigest.getInstance("SHA-256").digest(Tls.caDer()).joinToString("") { "%02x".format(it) }
         val o = ok().put("url", base).put("pin", pin).put("qr_remote", Qr.svg("${base}#cpin=$pin&cafp=$fp")).put("app", app)
         if (app) o.put("app_url", "${base}couch-remote.apk").put("qr_app", Qr.svg("${base}couch-remote.apk"))
+        o.put("update", Updater.summary())
         return o
     }
 

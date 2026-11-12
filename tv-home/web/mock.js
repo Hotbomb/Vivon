@@ -236,7 +236,8 @@
         if (path.indexOf("/api/wifi") === 0) return resolve(Object.assign({ ok: true }, mockWifi));
         if (path.indexOf("/api/connect") === 0) {
           var qr = '<svg viewBox="0 0 29 29" xmlns="http://www.w3.org/2000/svg"><rect width="29" height="29" fill="#fff"/><path d="M1 1h7v7H1zM21 1h7v7h-7zM1 21h7v7H1zM11 11h7v7h-7z" fill="#000"/></svg>';
-          return resolve({ ok: true, url: "http://192.168.1.20:5400/", pin: "482913", qr_remote: qr, app: true, app_url: "http://192.168.1.20:5400/couch-remote.apk", qr_app: qr });
+          return resolve({ ok: true, url: "http://192.168.1.20:5400/", pin: "482913", qr_remote: qr, app: true, app_url: "http://192.168.1.20:5400/couch-remote.apk", qr_app: qr,
+            update: { current: "0.1.15", latest: "0.1.16", available: true, checking: false, status: "idle", progress: 0, error: null } });
         }
         if (path.indexOf("/api/battery") === 0) return resolve({ ok: true, level: arg("battery") ? parseInt(arg("battery"), 10) : 82, charging: !!arg("charging") });
         if (path.indexOf("/api/music") === 0) return resolve({ ok: true, music: arg("music") ? mockSong() : null });

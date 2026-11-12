@@ -158,6 +158,7 @@ object TvScreen {
     /** What the TV shows now, and the choices. */
     fun describe(): JSONObject {
         val o = JSONObject().put("phone_screen_off", phoneOffWanted)
+            .put("chrome_nav", if (Tv.hasPackage("com.android.chrome") && Root.available == true) ChromeNav.on() else JSONObject.NULL)
         val d = Dex.tvDisplay() ?: return o.put("tv", false)
         o.put("tv", true)
         dm.getDisplay(d)?.let { disp ->
@@ -192,6 +193,7 @@ object TvScreen {
             if (!b.optBoolean("phone_screen_off")) panelOff = true   // so applyPhone turns it on
             Thread { applyPhone() }.start()
         }
+        if (b.has("chrome_nav")) ChromeNav.set(b.optBoolean("chrome_nav"))
         if (!b.has("size") && !b.has("density")) return
         val d = Dex.tvDisplay() ?: throw ApiError(409, "DeX is not on the TV right now.")
         if (b.has("size")) {

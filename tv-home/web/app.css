@@ -1664,3 +1664,7 @@ html.kw-off #shelf-title, html.kw-off .shelf-clip { display: none; }
 .connect .rc-qr svg path { fill: #000; stroke: none; }
 .connect .rc-qr svg rect { fill: #fff; stroke: none; }
 .connect.remote .cn-hint { text-align: center; }
+.rc-upd { width: min(100%, 64rem); margin: 1.25rem auto 0; display: flex; align-items: center; justify-content: center; gap: 1.25rem;
+  font-size: 1.25rem; color: rgba(255, 255, 255, 0.7); }
+.rc-upd.on { color: #fff; }
+.rc-update { cursor: pointer; }

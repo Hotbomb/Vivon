@@ -87,8 +87,8 @@ object Pointer {
         val px = b.optInt("scroll") + scrollRest
         val clicks = px / 40
         scrollRest = px - clicks * 40
-        // Finger up the pad means content up, like a phone: wheel down.
-        scroll(-clicks, b.optInt("hscroll"))
+        // Like a phone's screen: fingers up move the page up (the wheel down); left moves it left (wheel right).
+        scroll(clicks, -b.optInt("hscroll") / 40)
         if (b.optBoolean("click")) click("left")
         if (b.has("button")) {
             val which = b.optString("button", "left")

@@ -295,6 +295,12 @@
     // no "quick" from an older bridge: the sleep timer, and the picture switch where the TV has one
     QUICK = (Array.isArray(ST.quick) ? ST.quick : TVCFG.quick || ["sleep", "picture"])
       .filter(function (q, i, a) { return QUICK_ALL.indexOf(q) >= 0 && a.indexOf(q) === i; });
+    // Couch Phone: "Connect a remote" takes the look button's place, even in a list saved before it existed.
+    if (CFG.app === "couch-phone") {
+      QUICK = QUICK.map(function (q) { return q === "look" ? "remote" : q; })
+        .filter(function (q, i, a) { return a.indexOf(q) === i; });
+      if (QUICK.indexOf("remote") < 0) QUICK.unshift("remote");
+    }
     THEME = (Q.match(/[?&]theme=([a-z]+)/) || [])[1] || lookSetting();
     if (THEME !== "classic" && THEME !== "oled") THEME = "night";
     NIGHT = THEME === "night";
@@ -3672,9 +3678,10 @@
   }
 
   // ---------------- a pointer (LG's Magic Remote, or the phone's touchpad on an LG) ----------------
-  // Pointing at a tile moves the focus there; a click opens it, as OK would. Only on webOS, where the
-  // TV has a pointer; elsewhere the home stays arrows only.
-  var HAS_POINTER = !!window.COUCH_WEBOS;
+  // Pointing at a tile moves the focus there; a click opens it, as OK would. On webOS, where the
+  // TV has a pointer, and on Couch Phone (its remote's touchpad and air mouse are a real pointer);
+  // elsewhere the home stays arrows only.
+  var HAS_POINTER = !!window.COUCH_WEBOS || !!(window.COUCH_CONFIG && window.COUCH_CONFIG.app === "couch-phone");
   if (HAS_POINTER) document.documentElement.classList.add("has-pointer");
   function inList(list, el) {
     for (; el && el !== document.body; el = el.parentNode) { var i = list.indexOf(el); if (i >= 0) return i; }

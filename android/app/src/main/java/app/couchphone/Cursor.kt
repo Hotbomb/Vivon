@@ -86,7 +86,7 @@ object Cursor {
                 val m = wc.getSystemService(WindowManager::class.java)
                 val fl = FrameLayout(wc)
                 val a = Arrow(wc)
-                val px = (26 * wc.resources.displayMetrics.density).toInt().coerceAtLeast(24)
+                val px = (17 * wc.resources.displayMetrics.density).toInt().coerceAtLeast(16)
                 fl.addView(a, FrameLayout.LayoutParams(px, (px * 1.6f).toInt(), Gravity.TOP or Gravity.START))
                 val lp = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
@@ -111,10 +111,13 @@ object Cursor {
         return ok && root != null
     }
 
-    private fun place() {
+    private fun place(glide: Boolean = false) {
         val a = arrow ?: return
         val tip = a.layoutParams.width / 13f * 0.7f   // the arrow's tip sits this far into its view
-        a.translationX = x - tip; a.translationY = y - tip
+        if (glide) {
+            // the remote sends about 60 moves a second; gliding over one frame hides the Wi-Fi's unevenness
+            a.animate().translationX(x - tip).translationY(y - tip).setDuration(30).setInterpolator(android.view.animation.LinearInterpolator()).start()
+        } else { a.animate().cancel(); a.translationX = x - tip; a.translationY = y - tip }
     }
 
     private fun used() { main.removeCallbacks(hide); main.postDelayed(hide, 3 * 60_000L) }
@@ -133,14 +136,15 @@ object Cursor {
         val dx = b.optDouble("dx", 0.0).toFloat(); val dy = b.optDouble("dy", 0.0).toFloat()
         if (dx != 0f || dy != 0f) {
             x = (x + dx).coerceIn(0f, w - 1f); y = (y + dy).coerceIn(0f, h - 1f)
-            main.post { place() }
+            main.post { place(glide = true) }
             RootInput.mouseMove(d, x, y)
         }
         val sc = b.optDouble("scroll", 0.0).toFloat()
         val hs = b.optDouble("hscroll", 0.0).toFloat()
         if (sc != 0f || hs != 0f) {
-            // Touchpad pixels to wheel clicks (about 40 a click), finger up the pad scrolls the page up.
-            RootInput.mouseWheel(d, x, y, -sc / 40f, hs)
+            // Touchpad pixels to wheel clicks (about 40 a click), like a phone's screen: fingers up move
+            // the page up (the wheel down), fingers left move it left (the wheel right).
+            RootInput.mouseWheel(d, x, y, sc / 40f, -hs / 40f)
         }
         if (b.optBoolean("click")) click(d, 1)
         if (b.has("button")) {

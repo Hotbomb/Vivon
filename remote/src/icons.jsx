@@ -42,6 +42,7 @@ export const Rotate = (p) => <I {...p}><rect x="7" y="2.5" width="10" height="17
 export const PadView = (p) => <I {...p}><rect x="4" y="5" width="11" height="9" rx="2" /><path d="M9 18h9a2 2 0 0 0 2-2V9" /></I>;
 export const PadMenu = (p) => <I d="M5 7h14M5 12h14M5 17h14" {...p} />;
 export const PadHome = (p) => <I {...p}><circle cx="12" cy="12" r="8.5" /><path d="M8.5 9.5l7 5M15.5 9.5l-7 5" /></I>;
+export const Download = (p) => <I d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" {...p} />;
 export const ChevronR = (p) => <I d="M9 5l7 7-7 7" {...p} />;
 export const Reload = (p) => <I {...p}><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 4.5v4h-4" /></I>;
 export const TabNew = (p) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M12 9v6M9 12h6" /></I>;

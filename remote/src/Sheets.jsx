@@ -7,6 +7,7 @@ import { logoFor } from './appLogos.js';
 import { t, LANGS, choice, setChoice, locale } from './i18n.js';
 import { TvScreenSection } from './TvScreen.jsx';
 import { OpenLink } from './OpenLink.jsx';
+import { UpdateSection } from './Update.jsx';
 
 export const Sheet = forwardRef(function Sheet({ open, onClose, title, children, className = '', fromTop = false, closeDrag, extra = null }, ref) {
   return (
@@ -425,7 +426,9 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
   const sheetEl = useRef(null);
   const setRefs = (el) => { sheetEl.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
   const closeDrag = usePushUp(sheetEl, onClose);
-  const dex = tvs?.find((tv) => tv.id === tvId)?.kind === 'dex';
+  // This TV: the one chosen, or the only one (Couch Phone's is "this-tv", whatever the remote calls it).
+  const cur = tvs?.find((tv) => tv.id === tvId) || (tvs?.length === 1 ? tvs[0] : null);
+  const dex = cur?.kind === 'dex';
   const endsAt = sleepEnds ? new Date(sleepEnds) : null;
   const left = endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 60000)) : 0;
   return (
@@ -443,7 +446,7 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         </section>
       )}
 
-      {tvs?.find((tv) => tv.id === tvId)?.picture && (
+      {cur?.picture && (
         <section className="more-block">
           <h3><Ic.Sparkle size={16} /> {t('picture')}</h3>
           <div className="chips-row" role="radiogroup" aria-label="Picture mode">
@@ -499,6 +502,8 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         {!dex && <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>}
         <button className="pill glass arrange-open" onClick={() => { tick(); onPeople(); }}><Ic.People size={18} /> {t('people')}</button>
       </div>
+
+      {dex && <UpdateSection open={open} />}
 
       {typeof window !== 'undefined' && window.CouchApp && window.CouchApp.disconnect && (
         <button className="pill glass arrange-open" onClick={() => { tick(); window.CouchApp.disconnect(); }}><Ic.Screen size={18} /> {t('switch_tv')}</button>

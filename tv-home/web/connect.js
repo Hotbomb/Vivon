@@ -65,7 +65,13 @@
     cn_remote_app_sub: "Scan, install Couch Remote, open it: it finds this TV by itself.",
     cn_remote_no_app: "The Android app is not in this version of Couch Phone.",
     cn_remote_manual: "No camera? Open {url} on the phone and type the code {pin}.",
-    cn_remote_hint: "Back or OK to close. A code works once: it changes when a phone has used it.",
+    cn_remote_hint: "Back to close. A code works once: it changes when a phone has used it.",
+    cn_upd_checking: "Couch Phone {v}. Looking for a newer version…",
+    cn_upd_current: "Couch Phone {v} is the newest version.",
+    cn_upd_available: "Couch Phone {latest} is out (this is {v}).",
+    cn_upd_button: "OK: update now",
+    cn_upd_downloading: "Downloading Couch Phone {latest}… {p}%",
+    cn_upd_installing: "Installing… Couch Phone starts again by itself in a moment.",
     cn_system: "Android's own {name} settings",
     cn_system_sub: "Everything else, on the phone's settings screen",
     cn_working: "One moment…",
@@ -195,6 +201,17 @@
     html += d.app ? card(d.qr_app, t("cn_remote_app"), t("cn_remote_app_sub"), d.app_url) : card("", t("cn_remote_app"), t("cn_remote_no_app"));
     html += "</div>";
     if (d.pin) html += '<p class="rc-manual">' + esc(t("cn_remote_manual", { url: d.url, pin: d.pin.slice(0, 3) + " " + d.pin.slice(3) })) + "</p>";
+    // Updating Couch Phone itself from GitHub (Updater.kt on the phone)
+    var u = d.update;
+    if (u) {
+      var line, btn = "";
+      if (u.status === "downloading") line = t("cn_upd_downloading", { latest: u.latest, p: u.progress || 0 });
+      else if (u.status === "installing") line = t("cn_upd_installing");
+      else if (u.available) { line = t("cn_upd_available", { latest: u.latest, v: u.current }); btn = '<span class="rc-update cn-btn focus">' + esc(t("cn_upd_button")) + "</span>"; }
+      else if (u.checking) line = t("cn_upd_checking", { v: u.current });
+      else line = u.error && u.status === "failed" ? u.error : (u.error && !u.latest ? u.error : t("cn_upd_current", { v: u.current }));
+      html += '<div class="rc-upd' + (u.available ? " on" : "") + '"><span>' + esc(line) + "</span>" + btn + "</div>";
+    }
     html += '<p class="cn-hint">' + esc(t("cn_remote_hint")) + "</p>";
     el.innerHTML = html;
   }
@@ -249,7 +266,7 @@
     // Bluetooth changes quickly while searching or pairing; Wi-Fi asks Android less often.
     var fast = S2.data && (S2.data.searching || S2.data.pairing);
     S2.timer = setTimeout(function () { if (S2.busy || S2.pw) { schedule(); return; } load().then(schedule); },
-      S2.kind === "remote" ? 4000 : S2.kind === "bluetooth" ? (fast ? 1500 : 4000) : 8000);
+      S2.kind === "remote" ? (S2.data && S2.data.update && (S2.data.update.status === "downloading" || S2.data.update.checking) ? 1500 : 4000) : S2.kind === "bluetooth" ? (fast ? 1500 : 4000) : 8000);
   }
 
   function act(body, note) {
@@ -272,7 +289,16 @@
   function disarm() { S2.armed = null; S2.note = ""; clearTimeout(S2.armTimer); }
 
   function ok() {
-    if (S2.kind === "remote") { close(); return; }
+    if (S2.kind === "remote") {
+      var u = S2.data && S2.data.update;
+      if (u && u.available && u.status !== "downloading" && u.status !== "installing" && !S2.busy) {
+        S2.busy = true;
+        api("POST", "/api/update", {}).then(function (r) { S2.busy = false; if (S2.data) S2.data.update = r; S2.err = ""; paint(); },
+          function (e) { S2.busy = false; S2.err = e.message; paint(); });
+        return;
+      }
+      close(); return;
+    }
     var r = rows[S2.row]; if (!r || !r.acts || S2.busy) return;
     var a = r.acts[S2.btn] || r.acts[0], id = a.id, d = S2.data || {};
     if (id === "system") { S2.api("POST", "/api/launch", { app: S2.kind === "bluetooth" ? "bluetooth" : "network" }).catch(function () {}); close(); return; }
@@ -354,7 +380,20 @@
     S2.api = apiFn; S2.onClose = onClose || null;
     S2.data = null; S2.err = ""; S2.note = ""; S2.row = 0; S2.btn = 0; S2.pw = null; S2.searched = false; disarm();
     var el = $("connect");
-    if (!el) { el = document.createElement("div"); el.id = "connect"; el.className = "connect"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); document.body.appendChild(el); }
+    if (!el) {
+      el = document.createElement("div"); el.id = "connect"; el.className = "connect"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); document.body.appendChild(el);
+      // The pointer (Couch Phone's touchpad and air mouse): a click on a row's button presses it.
+      el.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (S2.kind === "remote") { var up = e.target.closest && e.target.closest(".rc-update"); if (up) ok(); else if (!e.target.closest(".rc-card")) close(); return; }
+        var row = e.target.closest && e.target.closest(".cn-row");
+        if (!row || e.target.closest("input")) return;
+        var i = +row.getAttribute("data-i"), btns = Array.prototype.slice.call(row.querySelectorAll(".cn-btn"));
+        var b = btns.indexOf(e.target.closest(".cn-btn"));
+        S2.row = i; S2.btn = b >= 0 ? b : 0; if (S2.armed && (S2.armed.row !== rows[i].id)) disarm();
+        paint(); ok();
+      });
+    }
     el.setAttribute("aria-label", t(S2.kind === "remote" ? "cn_remote_title" : S2.kind === "bluetooth" ? "cn_bt_title" : "cn_wifi_title"));
     el.classList.add("on");
     paint();

@@ -231,8 +231,15 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     if (e.pointerId !== s.id) return;   // with two fingers, the first one drives the scroll
     const r = ref.current.getBoundingClientRect();
     setSpot({ x: e.clientX - r.left, y: e.clientY - r.top });
-    if (s.two) addPointer('scroll', dy * SCROLL_GAIN);
-    else { addPointer('dx', dx * GAIN); addPointer('dy', dy * GAIN); }
+    if (s.two) {
+      // two fingers: up and down scroll, left and right scroll sideways (whichever way the fingers mostly go)
+      if (Math.abs(dy) >= Math.abs(dx)) addPointer('scroll', dy * SCROLL_GAIN); else addPointer('hscroll', dx * SCROLL_GAIN);
+    } else {
+      // faster swipes go further (pointer acceleration), so the TV's whole screen is one easy swipe away
+      const now = performance.now(); const dt = Math.max(1, now - (s.lt || now - 16)); s.lt = now;
+      const g = GAIN * (1 + Math.min(2, (Math.hypot(dx, dy) / dt) * 0.9));
+      addPointer('dx', dx * g); addPointer('dy', dy * g);
+    }
   };
   const pUp = (e) => {
     touches.current.delete(e.pointerId);

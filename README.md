@@ -91,6 +91,14 @@ A B X Y, bumpers, triggers, View, Home and Menu. The TV phone sees a real Xbox-s
 so Steam Link and controller games (Terraria and the like) work with it. Each phone that opens it
 is the next player, up to 4.
 
+**Updating Couch Phone:** the TV's "Connect a remote" screen (and the remote's TV sheet) shows
+when a newer release is out on GitHub. OK (or Update) downloads it and installs it with root;
+Couch Phone starts again by itself.
+
+**Arrows in Chrome:** remote's TV sheet, TV screen, "The arrows and OK in Chrome": *Move between
+links* turns on Chrome's own spatial navigation (with root), so the arrows jump between links,
+buttons and posters on any website and OK opens them, like a TV browser.
+
 **Power button** (top right of the remote): stops the picture to the TV. Most TVs then show "no
 signal" and go to standby by themselves, and the phone saves battery. **Turn on the TV** on the
 remote (or the power button again) brings it back. The **sleep timer** in the TV sheet does the
