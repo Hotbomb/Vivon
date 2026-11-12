@@ -154,6 +154,11 @@ object RootInput {
     fun text(s: String, display: Int) =
         helperSend("t $display " + Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
 
+    /** Mouse events where Couch Phone's own pointer is (Cursor.kt); see root/Injector.java. */
+    fun mouseMove(d: Int, x: Float, y: Float) = helperSend("mm $d ${x.toInt()} ${y.toInt()}")
+    fun mouseButton(d: Int, x: Float, y: Float, button: Int, down: Boolean) = helperSend("mb $d ${x.toInt()} ${y.toInt()} $button ${if (down) 1 else 0}")
+    fun mouseWheel(d: Int, x: Float, y: Float, v: Float, h: Float) = helperSend("mw $d ${x.toInt()} ${y.toInt()} $v $h")
+
     /** The phone's own screen panel: off (true) or on. The TV is not affected. */
     fun phonePanel(off: Boolean) = helperSend("s ${if (off) 0 else 2}")
 

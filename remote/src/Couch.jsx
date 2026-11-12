@@ -181,6 +181,7 @@ export const AirMouseSheet = forwardRef(function AirMouseSheet({ open, onClose, 
     state.current.last = 0; state.current.seen = false;
     window.addEventListener('devicemotion', onMotion);
     listening.current = true; setRunning(true); setPaused(false);
+    pointer.show(true);
     setTimeout(() => { if (listening.current && !state.current.seen) say(t('air_no_motion'), 'err'); }, 3000);
   };
   useImperativeHandle(ref, () => ({ start }));

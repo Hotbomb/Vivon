@@ -6,6 +6,7 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -24,6 +25,9 @@ import java.lang.reflect.Method;
  *   t <display> <text as base64 UTF-8>
  *   s <0|2>                 the phone's own screen panel off (0) or on (2), the way scrcpy's
  *                           "turn screen off" does it: the phone stays awake and the TV keeps going
+ *   mm <display> <x> <y>    the mouse moves to x, y (a hover, or a drag while a button is down)
+ *   mb <display> <x> <y> <1 left|2 right|4 middle> <1 down|0 up>
+ *   mw <display> <x> <y> <v> <h>   the wheel: v up (+) or down (-), h right (+) or left (-), in clicks
  *   p                       answers "pong"
  *
  * Original code for couch-phone. Nothing here is copied from another project.
@@ -73,6 +77,15 @@ public final class Injector {
             case "k":
                 key(Integer.parseInt(p[1]), Integer.parseInt(p[2]), p.length > 3 && "1".equals(p[3]), p.length > 4 ? Integer.parseInt(p[4]) : 0);
                 break;
+            case "mm":
+                mouseMove(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]));
+                break;
+            case "mb":
+                mouseButton(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]), Integer.parseInt(p[4]), "1".equals(p[5]));
+                break;
+            case "mw":
+                mouseWheel(Integer.parseInt(p[1]), Float.parseFloat(p[2]), Float.parseFloat(p[3]), Float.parseFloat(p[4]), Float.parseFloat(p[5]));
+                break;
             case "s":
                 screen(Integer.parseInt(p[1]));
                 break;
@@ -107,6 +120,72 @@ public final class Injector {
         }
         send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, meta), display);
         if (ctrl) send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, 0), display);
+    }
+
+    // ---------------------------------------------------------------- the mouse
+    // Couch Phone draws its own pointer on the TV (Cursor.kt) and sends real mouse events where it
+    // is, so hover, clicks, right clicks, drags and the wheel work in Chrome and every other app.
+
+    private static int mouseButtons = 0;
+    private static long mouseDown = 0;
+    private static Method setActionButton;
+
+    private static MotionEvent mouseEvent(long down, int action, float x, float y, int buttons, float v, float h) {
+        MotionEvent.PointerProperties pp = new MotionEvent.PointerProperties();
+        pp.id = 0;
+        pp.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+        MotionEvent.PointerCoords pc = new MotionEvent.PointerCoords();
+        pc.x = x;
+        pc.y = y;
+        pc.pressure = buttons != 0 ? 1f : 0f;
+        pc.size = 1f;
+        if (v != 0) pc.setAxisValue(MotionEvent.AXIS_VSCROLL, v);
+        if (h != 0) pc.setAxisValue(MotionEvent.AXIS_HSCROLL, h);
+        long now = SystemClock.uptimeMillis();
+        return MotionEvent.obtain(down, now, action, 1, new MotionEvent.PointerProperties[] { pp },
+                new MotionEvent.PointerCoords[] { pc }, 0, buttons, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0);
+    }
+
+    private static void mouseMove(int display, float x, float y) throws Exception {
+        long t = mouseButtons != 0 ? mouseDown : SystemClock.uptimeMillis();
+        send(mouseEvent(t, mouseButtons != 0 ? MotionEvent.ACTION_MOVE : MotionEvent.ACTION_HOVER_MOVE, x, y, mouseButtons, 0, 0), display);
+    }
+
+    private static void withActionButton(MotionEvent e, int button) {
+        try {
+            if (setActionButton == null) setActionButton = MotionEvent.class.getMethod("setActionButton", int.class);
+            setActionButton.invoke(e, button);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void mouseButton(int display, float x, float y, int button, boolean down) throws Exception {
+        if (down) {
+            if ((mouseButtons & button) != 0) return;
+            boolean first = mouseButtons == 0;
+            mouseButtons |= button;
+            if (first) {
+                mouseDown = SystemClock.uptimeMillis();
+                send(mouseEvent(mouseDown, MotionEvent.ACTION_DOWN, x, y, mouseButtons, 0, 0), display);
+            }
+            MotionEvent press = mouseEvent(mouseDown, MotionEvent.ACTION_BUTTON_PRESS, x, y, mouseButtons, 0, 0);
+            withActionButton(press, button);
+            send(press, display);
+        } else {
+            if ((mouseButtons & button) == 0) return;
+            mouseButtons &= ~button;
+            MotionEvent release = mouseEvent(mouseDown, MotionEvent.ACTION_BUTTON_RELEASE, x, y, mouseButtons, 0, 0);
+            withActionButton(release, button);
+            send(release, display);
+            if (mouseButtons == 0) {
+                send(mouseEvent(mouseDown, MotionEvent.ACTION_UP, x, y, 0, 0, 0), display);
+                send(mouseEvent(SystemClock.uptimeMillis(), MotionEvent.ACTION_HOVER_MOVE, x, y, 0, 0, 0), display);
+            }
+        }
+    }
+
+    private static void mouseWheel(int display, float x, float y, float v, float h) throws Exception {
+        send(mouseEvent(SystemClock.uptimeMillis(), MotionEvent.ACTION_SCROLL, x, y, mouseButtons, v, h), display);
     }
 
     /**

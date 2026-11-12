@@ -29,7 +29,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        Store.init(this); Root.init(this); Tv.init(this); Dex.init(this); TvScreen.init(this)
+        Store.init(this); Root.init(this); Tv.init(this); Dex.init(this); TvScreen.init(this); Cursor.init(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumed++ }
             override fun onActivityPaused(a: Activity) { resumed-- }

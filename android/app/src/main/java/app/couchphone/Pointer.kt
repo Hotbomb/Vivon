@@ -108,6 +108,9 @@ object Pointer {
      */
     private var scrollRest = 0
     fun handle(b: org.json.JSONObject) {
+        // Couch Phone's own pointer when it can be drawn (always visible, see Cursor.kt); this virtual mouse otherwise.
+        if (Cursor.available()) { Cursor.handle(b); return }
+        if (b.has("show") && b.length() == 1) { if (b.optBoolean("show")) { move(1, 0); move(-1, 0) }; return }
         move(b.optInt("dx"), b.optInt("dy"))
         val px = b.optInt("scroll") + scrollRest
         val clicks = px / 40

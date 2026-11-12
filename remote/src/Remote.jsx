@@ -323,7 +323,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
       {onPointer && !disabled && (
         <button type="button" className={`pointer-toggle ${pointerOn ? 'on' : ''}`} aria-pressed={pointerOn}
           aria-label={pointerOn ? 'Pointer on: tap for arrows' : 'Arrows: tap for the TV pointer'}
-          onPointerDown={(e) => e.stopPropagation()} onClick={() => { tick(); togglePointer(); }}><Ic.Cursor size={18} /></button>
+          onPointerDown={(e) => e.stopPropagation()} onClick={() => { tick(); togglePointer(); Promise.resolve(onPointer({ show: !pointerOn })).catch(() => {}); }}><Ic.Cursor size={18} /></button>
       )}
       {!disabled && (
         <div className="sr-only">

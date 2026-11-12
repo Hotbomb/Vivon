@@ -158,6 +158,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                 json(200, ok())
             }
             "GET /api/app-order" -> json(200, appOrder())
+            // Puts any installed app on the home's dock (the end of it), unhiding it if it was hidden.
+            "POST /api/home-add" -> { homeAdd(body(s).optString("package")); refreshHomeAfter(s); json(200, appOrder()) }
             "POST /api/app-order" -> {
                 val b = body(s)
                 val order = b.optJSONArray("order") ?: throw ApiError(400, "order must be a list of app packages")
@@ -232,6 +234,35 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         }
         Now.push()
         return json(200, ok().put("volume", JSONObject(Tv.volume())))
+    }
+
+    private fun homeAdd(pkg: String) {
+        if (!Regex("[A-Za-z0-9_.]+").matches(pkg) || !Tv.hasPackage(pkg)) throw ApiError(404, "$pkg is not installed")
+        // 1. not hidden any more
+        val st = Store.readJson("home-settings.json") as? JSONObject ?: JSONObject()
+        st.optJSONArray("hidden_apps")?.let { h ->
+            val keep = JSONArray(); for (i in 0 until h.length()) if (h.optString(i) != pkg) keep.put(h.opt(i))
+            if (keep.length() != h.length()) { st.put("hidden_apps", keep); Store.writeJson("home-settings.json", st); Store.putStr("home_settings_updated", Now.iso()) }
+        }
+        // 2. one of the apps the order knows about (the TV reports its list; a hidden app was left out of it)
+        val known = Store.readJson("home-apps.json") as? JSONObject ?: JSONObject().put("apps", JSONArray()).put("line", 10)
+        val apps = known.optJSONArray("apps") ?: JSONArray().also { known.put("apps", it) }
+        if ((0 until apps.length()).none { apps.optJSONObject(it)?.optString("package") == pkg }) {
+            apps.put(JSONObject().put("package", pkg).put("name", Tv.label(pkg)))
+            Store.writeJson("home-apps.json", known)
+        }
+        // 3. on the dock: the end of it, or its last place when it is full (that app moves behind More apps)
+        val cur = appOrder()
+        val list = cur.getJSONArray("apps")
+        val order = ArrayList<String>(); for (i in 0 until list.length()) list.getJSONObject(i).optString("package").let { if (it != pkg) order += it }
+        var line = cur.optInt("line")
+        val i0 = (0 until list.length()).indexOfFirst { list.getJSONObject(it).optString("package") == pkg }
+        if (i0 in 0 until line) order.add(i0, pkg)   // already on the dock: it stays where it is
+        else {
+            line = line.coerceAtMost(order.size)
+            if (line < 10) { order.add(line, pkg); line += 1 } else order.add(9, pkg)
+        }
+        Store.writeJson("app-order.json", JSONObject().put("order", JSONArray(order)).put("line", line.coerceIn(0, 10)))
     }
 
     private fun appOrder(): JSONObject {

@@ -229,17 +229,34 @@ export function ArrangeSheet({ open, onClose, tvName, hidden }) {
   const [drag, setDrag] = useState(null);   // the package being dragged
   const list = useRef(null);
   const sheet = useRef(null);
+  const [all, setAll] = useState(null);       // every installed app, for "Add an app"
+  const [adding, setAdding] = useState(false);
+  const unhidden = useRef(new Set());         // apps added back from hidden while this sheet is open
 
+  const show = (d) => {
+    const hid = (hidden || []).filter((p) => !unhidden.current.has(p));
+    const pk = (d.apps || []).map((a) => a.package).filter((p) => !hid.includes(p));
+    setNames((n) => ({ ...n, ...Object.fromEntries((d.apps || []).map((a) => [a.package, a.name])) }));
+    setMax(d.dock_max || 10);
+    setRows(pk.length ? [...pk.slice(0, d.line), LINE, ...pk.slice(d.line)] : []);
+  };
   useEffect(() => {
     if (!open) return;
-    setRows(null); setMsg('');
-    api.appOrder().then((d) => {
-      const pk = (d.apps || []).map((a) => a.package).filter((p) => !(hidden || []).includes(p));
-      setNames(Object.fromEntries((d.apps || []).map((a) => [a.package, a.name])));
-      setMax(d.dock_max || 10);
-      setRows(pk.length ? [...pk.slice(0, d.line), LINE, ...pk.slice(d.line)] : []);
-    }).catch((e) => { setRows([]); setMsg(e.message); });
-  }, [open]);
+    setRows(null); setMsg(''); setAdding(false); setAll(null);
+    api.appOrder().then(show).catch((e) => { setRows([]); setMsg(e.message); });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openAdd = () => {
+    tick(); setAdding((a) => !a);
+    if (!all) api.apps().then((d) => setAll((d.apps || []).slice().sort((a, b) => a.name.localeCompare(b.name)))).catch((e) => setMsg(e.message));
+  };
+  const add = (a) => {
+    tick();
+    unhidden.current.add(a.package);
+    api.homeAdd(a.package).then((d) => { show(d); setMsg(t('added_home', { name: a.name })); }).catch((e) => setMsg(e.message));
+  };
+  const onDock = rows ? rows.slice(0, rows.indexOf(LINE)) : [];
+  const hid = (hidden || []).filter((p) => !unhidden.current.has(p));
 
   const save = (next) => {
     let r = next;
@@ -294,6 +311,24 @@ export function ArrangeSheet({ open, onClose, tvName, hidden }) {
         ))}
       </ol>
       {msg && <p className="note arrange-msg" role="status">{msg}</p>}
+      {rows && (
+        <button className="pill glass arrange-open add-app-open" aria-expanded={adding} onClick={openAdd}><Ic.Plus size={18} /> {t('add_app')}</button>
+      )}
+      {adding && (
+        <>
+          <p className="note">{t('add_app_lede')}</p>
+          {!all && <p className="note">{t('loading_apps')}</p>}
+          <ul className="arrange add-apps">
+            {(all || []).filter((a) => !onDock.includes(a.package)).map((a) => (
+              <li key={a.package} className="arrange-row glass">
+                {logoFor({ package: a.package }) ? <img src={logoFor({ package: a.package })} alt="" /> : <span className="arrange-blank">{(a.name || '?').slice(0, 1)}</span>}
+                <b>{a.name}{hid.includes(a.package) && <small className="add-app-tag"> · {t('app_hidden_tag')}</small>}</b>
+                <button className="grip" aria-label={t('add_named', { name: a.name })} onClick={() => add(a)}><Ic.Plus size={20} /></button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </Sheet>
   );
 }
@@ -384,7 +419,7 @@ export function PeopleSheet({ open, onClose, onSaved }) {
   );
 }
 
-export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnds, onSleep, onKey, onText, sleepError, tvs, tvId, onTv, picture, pictureInfo, onPicture, onArrange, onPeople }, ref) {
+export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnds, onSleep, onKey, onText, sleepError, tvs, tvId, onTv, picture, pictureInfo, onPicture, onArrange, onPeople, onConnect }, ref) {
   const [typed, setTyped] = useState('');
   const sheetEl = useRef(null);
   const setRefs = (el) => { sheetEl.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
@@ -448,6 +483,12 @@ export const MoreSheet = forwardRef(function MoreSheet({ open, onClose, sleepEnd
         <button className="tile glass" onClick={() => { tick(); onKey('input'); }}><Ic.Input /> {t('input')}</button>
         <button className="tile glass" onClick={() => { tick(); onKey('settings'); }}><Ic.Gear /> {t('settings')}</button>
       </div>
+      {onConnect && tvs?.find((tv) => tv.id === tvId)?.kind === 'dex' && (
+        <div className="more-grid two">
+          <button className="tile glass" onClick={() => { tick(); onConnect('bluetooth'); }}><Ic.Bluetooth /> {t('bluetooth')}</button>
+          <button className="tile glass" onClick={() => { tick(); onConnect('wifi'); }}><Ic.Wifi /> {t('wifi')}</button>
+        </div>
+      )}
       <div className="arrange-pair">
         <button className="pill glass arrange-open" onClick={() => { tick(); onArrange(); }}><Ic.Grid size={18} /> {t('arrange_apps')}</button>
         <button className="pill glass arrange-open" onClick={() => { tick(); onPeople(); }}><Ic.People size={18} /> {t('people')}</button>

@@ -30,11 +30,14 @@ export const move = (dx, dy) => { acc.dx += dx; acc.dy += dy; pump(); };
 export const scroll = (px) => { acc.scroll += px; pump(); };
 /** which: left | right | middle; action: click | down | up */
 export const button = (which = 'left', action = 'click') => { buttons.push({ button: which, action }); pump(); };
+/** Shows (true) or hides (false) the pointer on the TV straight away. */
+export const show = (on = true) => { buttons.push({ show: on }); pump(); };
 /** The touchpad's message shape ({dx, dy, scroll, click}). */
 export const padPointer = (d) => {
   if (d.dx || d.dy) move(d.dx || 0, d.dy || 0);
   if (d.scroll) scroll(d.scroll);
   if (d.click) button('left');
   if (d.button) button(d.button, d.action || 'click');
+  if (d.show !== undefined) show(d.show);
   return Promise.resolve();
 };

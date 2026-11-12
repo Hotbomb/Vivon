@@ -8,6 +8,7 @@ import { Watch } from './Watch.jsx';
 import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sheets.jsx';
 import { usePullDown, usePageDrag } from './gestures.js';
 import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure } from './Couch.jsx';
+import { ConnectSheet } from './Connect.jsx';
 import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
@@ -400,7 +401,8 @@ export default function App() {
       <AskSheet ref={askInput} open={sheet === 'ask'} onClose={() => setSheet(null)} who={who} recs={recs} onAsk={onAsk} onDone={(reply) => say(reply)} />
       <MoreSheet ref={moreSheet} open={sheet === 'more'} tvs={tvs} tvId={tvId || 'living-room'} onTv={(id) => { tick(); chooseTv(id); }}
         picture={tv?.picture} pictureInfo={pictureInfo} onPicture={onPicture} onClose={() => setSheet(null)} sleepEnds={sleepEnds} sleepError={sleepError} onSleep={onSleep}
-        onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} />
+        onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} onConnect={(k) => setSheet(k)} />
+      <ConnectSheet open={sheet === 'bluetooth' || sheet === 'wifi'} kind={sheet === 'wifi' ? 'wifi' : 'bluetooth'} onClose={() => setSheet(null)} say={say} />
       <ArrangeSheet open={sheet === 'arrange'} onClose={() => setSheet(null)} tvName={thisTv?.name} hidden={hidden} />
       <KeyboardSheet ref={kbInput} open={sheet === 'keyboard'} onClose={() => setSheet(null)} say={say} onSpeak={openSpeak} />
       <SpeakSheet ref={speakRef} open={sheet === 'speak'} onClose={() => setSheet(null)} say={say} />

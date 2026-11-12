@@ -575,3 +575,24 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .steps .link { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; text-decoration: none; color: inherit; }
 .steps .link.solid { color: var(--on-solid); }
 .tip-text { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin-top: 8px; }
+
+/* Couch Phone: Add an app, Bluetooth and Wi-Fi sheets */
+.add-app-open { margin-top: 14px; }
+.add-apps { margin-bottom: 8px; }
+.add-app-tag { font-weight: 500; color: var(--ink-2); font-size: 13px; }
+.more-grid.two { grid-template-columns: repeat(2, 1fr); }
+.connect-sheet .chips-row { margin-bottom: 4px; }
+.cn-head { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 18px 0 8px; }
+.cn-row { height: auto; min-height: 60px; flex-wrap: wrap; padding: 8px 8px 8px 12px; gap: 8px 10px; }
+.cn-row b { display: flex; flex-direction: column; gap: 2px; }
+.cn-row b small { font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cn-row .pill.small { flex: none; height: 38px; padding: 0 14px; font-size: 14px; border-radius: 19px; }
+.cn-row .pill.small:disabled { opacity: 0.5; }
+.cn-row svg { flex: none; color: var(--ink-2); }
+.cn-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: rgba(255, 255, 255, 0.25); }
+.cn-dot.on { background: #34c759; box-shadow: 0 0 8px rgba(52, 199, 89, 0.7); }
+.cn-pairing { font-size: 15px; color: var(--ink); padding: 10px 12px; border-radius: 14px; background: rgba(255, 214, 10, 0.12); }
+.cn-pw { flex-basis: 100%; display: flex; gap: 8px; align-items: center; }
+.cn-pw input { flex: 1; min-width: 0; height: 44px; border-radius: 22px; padding: 0 16px; border: 0; font: inherit; font-size: 16px;
+  color: var(--ink); background: rgba(255, 255, 255, 0.1); }
+.cn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

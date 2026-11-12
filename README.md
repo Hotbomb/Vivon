@@ -63,6 +63,15 @@ settings and paired phones stay.
 on an app** to move it, hide it, or see its info. **Home settings** (the gear) has the look, the
 weather place, and hidden apps. The first row is your favourites.
 
+**Mouse pointer:** tap the arrow at the top left of the remote's pad (or start Air mouse) and a
+pointer appears on the TV at once. Drag to move, tap to click, two-finger tap to right click,
+two fingers to scroll. Couch Phone draws it itself and sends real mouse clicks, so Chrome works
+as with a plugged-in mouse. It hides after 3 minutes unused.
+
+**On the remote's TV sheet** (pull down): **Bluetooth** and **Wi-Fi** (pair, connect, unpair, join,
+forget), and **Arrange apps → Add an app to the home**, which lists every app on the phone (hidden
+ones too) and puts the one you tap on the home row.
+
 **Battery:** the phone's battery shows in the top right corner of the TV home (green while it
 charges, red when low).
 
