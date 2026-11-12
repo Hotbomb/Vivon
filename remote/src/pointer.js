@@ -25,10 +25,13 @@ function socket() {
   try {
     const token = (window.couchTv && window.couchTv.token && window.couchTv.token()) || '';
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}/api/ws?pad=1${token ? `&token=${encodeURIComponent(token)}` : ''}`);
-    ws.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.ok === false) fail(m.error || 'The TV pointer did not work.'); } catch (x) { /* */ } };
-    ws.onclose = () => { ws = null; wsDown = Date.now(); };
-    ws.onopen = () => schedule();
+    const s = new WebSocket(`${proto}//${location.host}/api/ws?pad=1${token ? `&token=${encodeURIComponent(token)}` : ''}`);
+    ws = s;
+    s.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.ok === false) fail(m.error || 'The TV pointer did not work.'); } catch (x) { /* */ } };
+    // Only this socket's own end counts (an older one closing must not drop a newer one); whatever
+    // waited for it goes over plain HTTP instead.
+    s.onclose = () => { if (ws === s) { ws = null; wsDown = Date.now(); schedule(); } };
+    s.onopen = () => schedule();
   } catch (e) { ws = null; wsDown = Date.now(); }
   return ws;
 }

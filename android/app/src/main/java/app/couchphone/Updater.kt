@@ -22,7 +22,9 @@ object Updater {
     @Volatile private var apkUrl: String? = null
     @Volatile private var apkSize = 0L
     @Volatile private var checkedAt = 0L
-    @Volatile private var checking = false
+    private val checkingNow = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val checking get() = checkingNow.get()
+    @Volatile private var failedAt = 0L   // the last failed look: not again for 5 minutes (GitHub limits callers)
     @Volatile private var status = "idle"            // idle, downloading, installing, failed
     @Volatile private var progress = 0
     @Volatile private var error: String? = null
@@ -44,8 +46,9 @@ object Updater {
 
     /** Asks GitHub (at most every 10 minutes, unless forced). */
     fun check(force: Boolean = false) {
-        if (checking || (!force && System.currentTimeMillis() - checkedAt < 10 * 60_000)) return
-        checking = true
+        val now = System.currentTimeMillis()
+        if (!force && (now - checkedAt < 10 * 60_000 || now - failedAt < 5 * 60_000)) return
+        if (!checkingNow.compareAndSet(false, true)) return
         try {
             val c = get(LATEST)
             try {
@@ -64,19 +67,21 @@ object Updater {
             } finally { c.disconnect() }
         } catch (e: Exception) {
             Log.w(TAG, "check", e); error = "Could not reach GitHub: ${e.message}"
-        } finally { checking = false }
+            failedAt = System.currentTimeMillis()
+        } finally { checkingNow.set(false) }
     }
 
     /** What the screens show; looks again in the background when the last look is old. */
     fun summary(): JSONObject {
-        if (System.currentTimeMillis() - checkedAt > 10 * 60_000 && !checking) Thread { check() }.start()
+        val now = System.currentTimeMillis()
+        if (now - checkedAt > 10 * 60_000 && now - failedAt > 5 * 60_000 && !checking) Thread { check() }.start()
         val l = latest
         val available = l != null && apkUrl != null && newer(l, BuildConfig.VERSION_NAME)
         return JSONObject()
             .put("current", BuildConfig.VERSION_NAME)
             .put("latest", l ?: JSONObject.NULL)
             .put("available", available)
-            .put("checking", checking || (checkedAt == 0L && error == null))
+            .put("checking", checking || (checkedAt == 0L && error == null && failedAt == 0L))
             .put("status", status).put("progress", progress)
             .put("error", error ?: JSONObject.NULL)
     }
@@ -118,7 +123,9 @@ object Updater {
             // pm reads it from /data/local/tmp (the app's own cache is private). Android stops this app
             // when the install is done, then starts the new one.
             val tmp = "/data/local/tmp/couch-phone-update.apk"
-            val out = Root.sh("cp '${file.absolutePath}' $tmp && chmod 644 $tmp && pm install -r $tmp 2>&1; rm -f $tmp", 180_000)
+            // its own root process: the shared shell (keys, launches) stays free during the install
+            val out = Root.runOnce("cp '${file.absolutePath}' $tmp && chmod 644 $tmp && pm install -r $tmp 2>&1; rm -f $tmp", 180_000)
+                ?: throw IllegalStateException("the install did not answer")
             if (out.contains("Success")) return   // Android stops this app in a moment, then starts the new one
             throw IllegalStateException(out.lines().lastOrNull { it.isNotBlank() }?.take(160) ?: "the install did not finish")
         } catch (e: Exception) {

@@ -116,6 +116,19 @@ object Root {
         throw IllegalStateException(why)
     }
 
+    /**
+     * A one-off root command in its own `su` process: long or slow work (an install, a big dump)
+     * that must not hold the shared shell, which every key press and launch also uses.
+     */
+    fun runOnce(cmd: String, timeoutMs: Long = 15_000): String? = try {
+        val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+        val out = StringBuilder()
+        val reader = Thread { runCatching { p.inputStream.bufferedReader().forEachLine { synchronized(out) { out.append(it).append('\n') } } } }
+        reader.isDaemon = true; reader.start()
+        if (!p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) { p.destroy(); null }
+        else { reader.join(2000); synchronized(out) { out.toString() } }
+    } catch (e: Exception) { Log.w(TAG, "runOnce", e); null }
+
     /** The native helper's two ways to run: from the app's library folder, or a copy in /data/local/tmp. */
     fun nativeCommands(bin: java.io.File, args: String = ""): List<String> = listOf(
         "exec '${bin.absolutePath}' $args",

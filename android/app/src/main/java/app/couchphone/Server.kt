@@ -187,7 +187,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "GET /api/remote-apps" -> json(200, ok(Store.readJson("remote-apps.json") as? JSONObject ?: JSONObject().put("order", JSONArray()).put("hidden", JSONArray())).put("saved", Store.readJson("remote-apps.json") != null))
             "POST /api/remote-apps" -> {
                 val b = body(s)
-                fun pkgs(k: String) = JSONArray().also { out -> b.optJSONArray(k)?.let { a -> for (i in 0 until minOf(a.length(), 400)) a.optString(i).takeIf { Regex("[A-Za-z0-9_.]{1,200}").matches(it) }?.let { out.put(it) } } }
+                // app packages, and website tiles ("site:cinejoy", "site:pin-1a2b3c4d5e")
+                fun pkgs(k: String) = JSONArray().also { out -> b.optJSONArray(k)?.let { a -> for (i in 0 until minOf(a.length(), 400)) a.optString(i).takeIf { Regex("[A-Za-z0-9_.]{1,200}|site:[a-z0-9-]{1,64}").matches(it) }?.let { out.put(it) } } }
                 val saved = JSONObject().put("order", pkgs("order")).put("hidden", pkgs("hidden"))
                 Store.writeJson("remote-apps.json", saved)
                 json(200, ok(saved).put("saved", true))
@@ -304,7 +305,9 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
     }
 
     private fun homeAdd(pkg: String) {
-        if (!Regex("[A-Za-z0-9_.]+").matches(pkg) || !Tv.hasPackage(pkg)) throw ApiError(404, "$pkg is not installed")
+        val site = pkg.startsWith(Sites.PREFIX)
+        if (site) { if (Sites.find(pkg) == null) throw ApiError(404, "That website tile is gone.") }
+        else if (!Regex("[A-Za-z0-9_.]+").matches(pkg) || !Tv.hasPackage(pkg)) throw ApiError(404, "$pkg is not installed")
         // 1. not hidden any more
         val st = Store.readJson("home-settings.json") as? JSONObject ?: JSONObject()
         st.optJSONArray("hidden_apps")?.let { h ->
@@ -315,7 +318,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         val known = Store.readJson("home-apps.json") as? JSONObject ?: JSONObject().put("apps", JSONArray()).put("line", 10)
         val apps = known.optJSONArray("apps") ?: JSONArray().also { known.put("apps", it) }
         if ((0 until apps.length()).none { apps.optJSONObject(it)?.optString("package") == pkg }) {
-            apps.put(JSONObject().put("package", pkg).put("name", Tv.label(pkg)))
+            apps.put(JSONObject().put("package", pkg).put("name", if (site) Sites.find(pkg)?.name ?: pkg else Tv.label(pkg)))
             Store.writeJson("home-apps.json", known)
         }
         // 3. on the dock: the end of it, or its last place when it is full (that app moves behind More apps)

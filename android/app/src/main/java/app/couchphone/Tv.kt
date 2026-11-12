@@ -137,10 +137,31 @@ object Tv {
     fun pauseBrowser(except: String? = null) {
         val front = runCatching { frontCached() }.getOrNull() ?: return
         if (front !in BROWSERS || front == except) return
-        media(KeyEvent.KEYCODE_MEDIA_PAUSE)
-        // and the same through the media sessions directly, in case the key went elsewhere
-        if (Root.available == true) Thread { Root.shOrNull("cmd media_session dispatch pause 2>&1", 4000) }.start()
         frontAt = 0L   // the app in front is about to change
+        // Exactly the browser's own player, through the media sessions (MediaWatch is allowed with root).
+        val sessions = runCatching {
+            ctx.getSystemService(android.media.session.MediaSessionManager::class.java)
+                .getActiveSessions(android.content.ComponentName(ctx, MediaWatch::class.java))
+        }.getOrNull()
+        if (sessions != null) {
+            sessions.filter { it.packageName == front && it.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING }
+                .forEach { runCatching { it.transportControls.pause() } }
+            return
+        }
+        // Without that access: the pause key, but only when the browser is the one playing (else it
+        // would go to whatever played last, Spotify in the background for one).
+        if (Root.available != true) return
+        Thread {
+            val dump = Root.runOnce("dumpsys media_session", 4000) ?: return@Thread
+            var pkg: String? = null
+            var playing: String? = null
+            for (line in dump.lines()) {
+                val t = line.trim()
+                if (t.startsWith("package=")) pkg = t.removePrefix("package=").trim()
+                else if (t.contains("state=PlaybackState {state=3")) { playing = pkg; break }
+            }
+            if (playing == front) media(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        }.start()
     }
 
     private fun media(code: Int) {

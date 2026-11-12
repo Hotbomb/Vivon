@@ -57,14 +57,77 @@ object Sites {
 
     @Volatile private var pinCache: List<Site> = emptyList()
     @Volatile private var pinAt = 0L
+    @Volatile private var pinRefreshing = false
     private const val FLAG_PINNED = 2L
     private const val FLAG_DISABLED = 64L
 
+    /** The pinned shortcuts as last read; read again in the background at most every minute, never waited for. */
     private fun pinned(): List<Site> {
         val now = System.currentTimeMillis()
-        if (now - pinAt < 60_000 || Root.available != true) return pinCache
-        pinAt = now
-        val dump = Root.shOrNull("dumpsys shortcut 2>/dev/null", 15_000) ?: return pinCache
+        if (now - pinAt > 60_000 && !pinRefreshing && Root.available == true) {
+            pinRefreshing = true; pinAt = now
+            Thread {
+                try {
+                    val fresh = runCatching { fromFiles() ?: fromDump() }.onFailure { Log.w(TAG, "pinned shortcuts", it) }.getOrNull()
+                    if (fresh != null) {
+                        val changed = fresh.map { it.id to it.url } != pinCache.map { it.id to it.url }
+                        pinCache = fresh
+                        if (changed) HomeActivity.refresh()   // the TV home lists them at once
+                    }
+                } finally { pinRefreshing = false }
+            }.start()
+        }
+        return pinCache
+    }
+
+    private fun slugFor(pkg: String, id: String) =
+        "pin-" + java.security.MessageDigest.getInstance("SHA-1").digest("$pkg/$id".toByteArray()).take(5).joinToString("") { "%02x".format(it) }
+
+    private fun labelFor(host: String) = host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() }
+
+    private fun unescape(v: String) = v.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">")
+        .replace(Regex("&#(\\d+);")) { it.groupValues[1].toInt().toChar().toString() }.replace("&amp;", "&")
+
+    /** The web address an intent (as Intent.toUri writes it) opens: its data, or a web app's URL extra. */
+    private fun urlOf(intent: String): String? {
+        if (intent.startsWith("http://") || intent.startsWith("https://")) return intent.substringBefore("#Intent;")
+        Regex("(?:^|;)S\\.[A-Za-z0-9_.]*(?:webapp_url|url)=([^;]+)").find(intent)?.let { return android.net.Uri.decode(it.groupValues[1]).takeIf { u -> u.startsWith("http") } }
+        return null
+    }
+
+    /**
+     * The shortcut service's own files (Android 12 keeps them in binary XML; abx2xml turns them back
+     * into text): the full address, and the web app URL of sites pinned as web apps, which the dump
+     * leaves out. Null when they cannot be read.
+     */
+    private fun fromFiles(): List<Site>? {
+        val dir = "/data/system_ce/0/shortcut_service/packages"
+        val out = Root.runOnce("for f in $dir/*.xml; do echo \"@@FILE ${'$'}f\"; abx2xml \"${'$'}f\" - 2>/dev/null || cat \"${'$'}f\"; done", 15_000)
+        if (out == null || !out.contains("<shortcut")) return null
+        val found = ArrayList<Site>()
+        for (part in out.split("@@FILE ").drop(1)) {
+            val pkg = part.substringBefore('\n').trim().substringAfterLast('/').removeSuffix(".xml")
+            val shortcut = Regex("<shortcut\\b([^>]*?)(?:/>|>(.*?)</shortcut>)", RegexOption.DOT_MATCHES_ALL)
+            for (m in shortcut.findAll(part)) {
+                val attrs = m.groupValues[1]; val body = m.groupValues[2]
+                fun attr(n: String) = Regex("\\b$n=\"([^\"]*)\"").find(attrs)?.groupValues?.get(1)?.let { unescape(it) }
+                val flags = attr("flags")?.toLongOrNull() ?: continue
+                if (flags and FLAG_PINNED == 0L || flags and FLAG_DISABLED != 0L) continue
+                val intents = Regex("intent(?:-base)?=\"([^\"]*)\"").findAll(attrs + " " + body).map { unescape(it.groupValues[1]) }
+                val url = intents.mapNotNull { urlOf(it) }.firstOrNull() ?: continue
+                val host = android.net.Uri.parse(url).host ?: continue
+                val id = attr("id") ?: url
+                val label = attr("title")?.takeIf { it.isNotBlank() } ?: labelFor(host)
+                val slug = slugFor(pkg, id)
+                if (found.none { it.slug == slug }) found += Site(slug, label.take(40), url, pkg, pinned = true, bitmapPath = attr("bitmap-path"))
+            }
+        }
+        return found
+    }
+
+    /** The service's dump, when the files cannot be read (addresses are cut to the site there). */
+    private fun fromDump(): List<Site>? {
+        val dump = Root.runOnce("dumpsys shortcut 2>/dev/null", 15_000) ?: return null
         val found = ArrayList<Site>()
         for (block in dump.split("ShortcutInfo {").drop(1)) {
             val b = block.substringBefore("\n    Package:").substringBefore("\n  User:")
@@ -75,12 +138,11 @@ object Sites {
             val host = android.net.Uri.parse(url).host ?: continue
             val id = Regex("\\bid=([^,]+)").find(b)?.groupValues?.get(1)?.trim() ?: url
             val label = Regex("shortLabel=(.*?), [A-Za-z]+=").find(b)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
-                ?: host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() }
+                ?: labelFor(host)
             val bitmap = Regex("(?i)bitmapPath=(/[^,}\\s]+)").find(b)?.groupValues?.get(1)
-            val slug = "pin-" + java.security.MessageDigest.getInstance("SHA-1").digest("$pkg/$id".toByteArray()).take(5).joinToString("") { "%02x".format(it) }
+            val slug = slugFor(pkg, id)
             if (found.none { it.slug == slug }) found += Site(slug, label.take(40), url, pkg, pinned = true, bitmapPath = bitmap)
         }
-        pinCache = found
         return found
     }
 
@@ -99,22 +161,23 @@ object Sites {
     fun find(id: String): Site? = list().firstOrNull { it.id == id || it.slug == id }
 
     /** Adds a website. The address may be typed without https://; the name defaults to the site's. */
-    @Synchronized fun add(nameIn: String, urlIn: String, browser: String? = null): Site {
+    fun add(nameIn: String, urlIn: String, browser: String? = null): Site {
         var u = urlIn.trim()
         if (u.isEmpty()) throw ApiError(400, "Type the website's address.")
         if (!u.contains("://")) u = "https://$u"
         val uri = android.net.Uri.parse(u)
         val host = uri.host ?: throw ApiError(400, "That address is not right.")
         if (uri.scheme != "http" && uri.scheme != "https") throw ApiError(400, "Only web addresses (http or https).")
-        val name = nameIn.trim().ifEmpty { host.removePrefix("www.").substringBefore('.').replaceFirstChar { it.uppercase() } }.take(40)
+        val name = nameIn.trim().ifEmpty { labelFor(host) }.take(40)
         val base = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "site" }.take(24)
-        val have = added()
-        var slug = base; var n = 2
-        while (have.any { it.slug == slug }) slug = "$base-${n++}"
-        val s = Site(slug, name, u, browser ?: BRAVE)
-        save(have + s)
-        // the icon now, so the tile shows it straight away (a few seconds at most; the name if none)
-        runCatching { fetchIcon(s) }.onFailure { Log.w(TAG, "icon for ${s.url}", it) }
+        val s = synchronized(this) {
+            val have = added()
+            var slug = base; var n = 2
+            while (have.any { it.slug == slug }) slug = "$base-${n++}"
+            Site(slug, name, u, browser ?: BRAVE).also { save(have + it) }
+        }
+        // the icon now if it comes quickly, so the tile shows it straight away (else it follows)
+        requestIcon(s)?.join(5000)
         return s
     }
 
@@ -137,19 +200,28 @@ object Sites {
 
     private fun iconFile(slug: String) = File(File(App.instance.filesDir, "site-icons").apply { mkdirs() }, "$slug.png")
 
-    /** The site's icon as a 192 px PNG, or null (the tile then shows the name). */
+    private val iconBusy = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val iconFailed = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** The site's icon as a 192 px PNG, or null (the tile then shows the name; the icon is fetched for next time). */
     fun icon(id: String): ByteArray? {
         val s = find(id) ?: return null
         val f = iconFile(s.slug)
         if (f.isFile) return f.readBytes()
-        if (s.bitmapPath != null && Root.available == true) runCatching {
-            val b64 = Root.sh("base64 -w 0 '${s.bitmapPath}'; echo", 8000).trim()
-            val raw = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-            val bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size)
-            if (bmp != null) { f.writeBytes(tile(bmp)); bmp.recycle(); return f.readBytes() }
-        }
-        Thread { runCatching { fetchIcon(s) } }.start()   // not fetched yet (or failed): try again for next time
+        requestIcon(s)
         return null
+    }
+
+    /** Fetches the icon in the background: one fetch per site at a time, and after a failure not again for 10 minutes. */
+    private fun requestIcon(s: Site): Thread? {
+        if (System.currentTimeMillis() - (iconFailed[s.slug] ?: 0L) < 10 * 60_000) return null
+        if (!iconBusy.add(s.slug)) return null
+        return Thread {
+            try {
+                val ok = runCatching { fetchIcon(s) }.onFailure { Log.w(TAG, "icon for ${s.url}", it) }.getOrDefault(false)
+                if (ok) iconFailed.remove(s.slug) else iconFailed[s.slug] = System.currentTimeMillis()
+            } finally { iconBusy.remove(s.slug) }
+        }.apply { isDaemon = true; start() }
     }
 
     private fun get(url: String, max: Int): ByteArray? {
@@ -166,8 +238,14 @@ object Sites {
         } finally { c.disconnect() }
     }
 
-    @Synchronized private fun fetchIcon(s: Site) {
-        if (iconFile(s.slug).isFile) return
+    private fun fetchIcon(s: Site): Boolean {
+        if (iconFile(s.slug).isFile) return true
+        if (s.bitmapPath != null && Root.available == true) {
+            val b64 = Root.runOnce("base64 -w 0 '${s.bitmapPath.replace("'", "")}'", 8000)?.trim().orEmpty()
+            val raw = runCatching { android.util.Base64.decode(b64, android.util.Base64.DEFAULT) }.getOrNull()
+            val bmp = raw?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+            if (bmp != null) { keep(s.slug, tile(bmp)); bmp.recycle(); return true }
+        }
         val page = runCatching { get(s.url, 512 * 1024)?.toString(Charsets.UTF_8) }.getOrNull().orEmpty()
         val base = URL(s.url)
         // <link rel="apple-touch-icon" href> first (big, square), then <link rel="icon">, then the usual files
@@ -182,11 +260,20 @@ object Sites {
         for (u in candidates.distinct()) {
             val bytes = runCatching { get(u, 2 * 1024 * 1024) }.getOrNull() ?: continue
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
-            iconFile(s.slug).writeBytes(tile(bmp))
+            keep(s.slug, tile(bmp))
             bmp.recycle()
             Log.i(TAG, "icon for ${s.name} from $u")
-            return
+            return true
         }
+        return false
+    }
+
+    /** Written whole, then put in place: a half-written icon is never read. */
+    private fun keep(slug: String, png: ByteArray) {
+        val f = iconFile(slug)
+        val tmp = File(f.parentFile, "$slug.tmp")
+        tmp.writeBytes(png)
+        if (!tmp.renameTo(f)) { f.writeBytes(png); tmp.delete() }
     }
 
     /** The picture on a rounded white tile (most site icons are made for a light background). */

@@ -79,6 +79,7 @@ object Pointer {
      * Scroll is in screen pixels from the touchpad; about 40 make one wheel click.
      */
     private var scrollRest = 0
+    private var hscrollRest = 0
     fun handle(b: org.json.JSONObject) {
         // Couch Phone's own pointer when it can be drawn (always visible, see Cursor.kt); this virtual mouse otherwise.
         if (Cursor.available()) { Cursor.handle(b); return }
@@ -88,7 +89,11 @@ object Pointer {
         val clicks = px / 40
         scrollRest = px - clicks * 40
         // Like a phone's screen: fingers up move the page up (the wheel down); left moves it left (wheel right).
-        scroll(clicks, -b.optInt("hscroll") / 40)
+        // Sideways adds up across messages too (a few pixels each, never a whole click on its own).
+        val hpx = b.optInt("hscroll") + hscrollRest
+        val hclicks = hpx / 40
+        hscrollRest = hpx - hclicks * 40
+        scroll(clicks, -hclicks)
         if (b.optBoolean("click")) click("left")
         if (b.has("button")) {
             val which = b.optString("button", "left")

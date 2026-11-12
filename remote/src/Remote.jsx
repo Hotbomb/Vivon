@@ -233,7 +233,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
     // the glow under the finger: once a frame at most, so drawing never holds up the moves
     const r = ref.current.getBoundingClientRect();
     const at = { x: e.clientX - r.left, y: e.clientY - r.top };
-    if (!spotFrame.current) spotFrame.current = requestAnimationFrame(() => { spotFrame.current = 0; setSpot(at); });
+    if (!spotFrame.current) spotFrame.current = requestAnimationFrame(() => { spotFrame.current = 0; if (pg.current) setSpot(at); });
     if (s.two) {
       // two fingers: up and down scroll, left and right scroll sideways (whichever way the fingers mostly go)
       if (Math.abs(dy) >= Math.abs(dx)) addPointer('scroll', dy * SCROLL_GAIN); else addPointer('hscroll', dx * SCROLL_GAIN);
@@ -246,6 +246,7 @@ export function Pad({ onKey, offState, wakeError, onWake, onRetry, tvName, onLiv
   };
   const pUp = (e) => {
     touches.current.delete(e.pointerId);
+    if (!touches.current.size && spotFrame.current) { cancelAnimationFrame(spotFrame.current); spotFrame.current = 0; }
     const s = pg.current;
     if (touches.current.size) return;
     pg.current = null; setSpot(null);

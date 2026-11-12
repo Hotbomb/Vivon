@@ -158,6 +158,8 @@ class BridgeService : Service() {
     private fun rootSetup() {
         if (!Root.openShell()) return
         val p = packageName
+        // MediaWatch: to see (and pause) the browser's player only, never other apps' music
+        Root.shOrNull("cmd notification allow_listener $p/$p.MediaWatch 2>&1")
         Root.shOrNull("appops set $p SYSTEM_ALERT_WINDOW allow; dumpsys deviceidle whitelist +$p; " +
             "cmd appops set $p RUN_ANY_IN_BACKGROUND allow; cmd appops set $p RUN_IN_BACKGROUND allow")
         RootInput.warmUp()

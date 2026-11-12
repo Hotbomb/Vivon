@@ -123,9 +123,29 @@ class BrowserActivity : Activity() {
             override fun onPageFinished(view: WebView, url: String) { inject() }
         }
         web.webChromeClient = object : WebChromeClient() {
-            // Pop-ups and new tabs (the ads' favourite): never.
+            // Pop-ups and new tabs (the ads' favourite): never as a new window. A link the person picked
+            // that opens the same website in a new tab ("Watch now" on many sites) opens here instead;
+            // anything else (another site: an ad) is stopped.
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
-                say(getString(R.string.browser_popup), 1800); return false
+                if (!isUserGesture) { say(getString(R.string.browser_popup), 1800); return false }
+                val catcher = WebView(this@BrowserActivity)
+                catcher.webViewClient = object : WebViewClient() {
+                    private var done = false
+                    private fun take(u: Uri) {
+                        if (done) return
+                        done = true
+                        if ((u.scheme == "http" || u.scheme == "https") && !Ads.blocked(u.host) && sameSite(u.host, Uri.parse(web.url ?: "").host)) web.loadUrl(u.toString())
+                        else say(getString(R.string.browser_popup), 1800)
+                        main.post { runCatching { catcher.destroy() } }
+                    }
+                    override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean { take(req.url); return true }
+                    override fun onPageStarted(v: WebView, url: String, favicon: android.graphics.Bitmap?) { take(Uri.parse(url)); v.stopLoading() }
+                }
+                (resultMsg.obj as? WebView.WebViewTransport)?.webView = catcher
+                resultMsg.sendToTarget()
+                // nothing came within a few seconds (a script-only window): let it go
+                main.postDelayed({ runCatching { catcher.destroy() } }, 5000)
+                return true
             }
             override fun onProgressChanged(view: WebView, p: Int) {
                 bar.animate().cancel()
@@ -145,6 +165,12 @@ class BrowserActivity : Activity() {
             }
             override fun onHideCustomView() { leaveFull() }
         }
+    }
+
+    /** The same website: the last two parts of the name (cinejoy.pk, www.cinejoy.pk, play.cinejoy.pk). */
+    private fun sameSite(a: String?, b: String?): Boolean {
+        fun site(h: String?) = h?.lowercase()?.split('.')?.takeLast(2)?.joinToString(".")
+        return a != null && b != null && site(a) == site(b)
     }
 
     private fun leaveFull() {
