@@ -25,6 +25,7 @@ class SetupActivity : Activity() {
     private lateinit var address: TextView
     private lateinit var code: TextView
     private lateinit var state: TextView
+    private lateinit var homeButton: Button
     private val tick = object : Runnable { override fun run() { refresh(); main.postDelayed(this, 1500) } }
     private val pinListener: (String?) -> Unit = { main.post { refresh() } }
 
@@ -55,7 +56,8 @@ class SetupActivity : Activity() {
         col.addView(first)
         col.addView(button("New phone code") { Auth.newPin(); refresh() })
         col.addView(button("Ask for root again") { Thread { Root.openShell(); RootInput.warmUp(); main.post { refresh() } }.start() })
-        col.addView(button("Use as this phone's home app too") { HomeRole.request(this) })
+        homeButton = button("") { if (HomeRole.held(this)) HomeRole.release(this) else HomeRole.request(this); main.postDelayed({ refresh() }, 1500) }
+        col.addView(homeButton)
         col.addView(button("Battery: set to Unrestricted") {
             runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
         })
@@ -87,6 +89,8 @@ class SetupActivity : Activity() {
         val tv = Dex.tvDisplay()
         val dex = if (tv != null) "DeX: on, TV is display $tv." else "DeX: not on a TV right now. Keys go to this phone's screen."
         state.text = "$root\n$dex\nPhones paired: ${Auth.phoneCount()}"
+        // Optional: only the phone's own Home button. DeX opens Couch Phone on the TV either way.
+        homeButton.text = if (HomeRole.held(this)) "Back to Samsung's home on this phone" else "Use as this phone's home app too"
     }
 
     companion object {
