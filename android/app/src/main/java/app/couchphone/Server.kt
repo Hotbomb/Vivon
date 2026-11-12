@@ -370,10 +370,15 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
      */
     private inner class Socket(h: IHTTPSession) : WebSocket(h) {
         private val fn: (String) -> Unit = { runCatching { send(JSONObject(it).put("event", "now").toString()) } }
-        override fun onOpen() { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } }
-        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn) }
+        /** The game controller this remote plays with (Gamepad.kt), 0 for none yet. */
+        @Volatile private var player = 0
+        // A controller-only socket (?pad=1) does not need the now playing updates.
+        private val padOnly = h.parameters["pad"]?.firstOrNull() == "1"
+        private fun unplug() { if (player > 0) { Gamepad.leave(player); player = 0 } }
+        override fun onOpen() { if (!padOnly) { Now.listen(fn); runCatching { send(Now.payload().put("event", "now").toString()) } } }
+        override fun onClose(code: NanoWSD.WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) { Now.unlisten(fn); unplug() }
         override fun onPong(pong: NanoWSD.WebSocketFrame?) {}
-        override fun onException(e: IOException?) { Now.unlisten(fn) }
+        override fun onException(e: IOException?) { Now.unlisten(fn); unplug() }
         override fun onMessage(frame: NanoWSD.WebSocketFrame) {
             val reply = try {
                 val m = JSONObject(frame.textPayload)
@@ -383,6 +388,19 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                     m.has("text") -> { Tv.text(m.getString("text")); JSONObject().put("ok", true) }
                     // The air mouse sends many small moves: no answer for those, to keep the socket quiet.
                     m.has("pointer") -> { Pointer.handle(m.getJSONObject("pointer")); if (m.optBoolean("quiet")) return; JSONObject().put("ok", true) }
+                    // The remote's Controller screen: the first message plugs a controller in (player 1-4),
+                    // then each change of the sticks and buttons; {"pad": false} unplugs it.
+                    m.has("pad") -> {
+                        val st = m.optJSONObject("pad")
+                        if (st == null) { unplug(); JSONObject().put("ok", true).put("player", 0) }
+                        else {
+                            val first = player == 0
+                            if (first) player = Gamepad.join()
+                            Gamepad.state(player, st)
+                            if (!first) return
+                            JSONObject().put("ok", true).put("player", player)
+                        }
+                    }
                     else -> JSONObject().put("ok", false).put("error", "unknown message")
                 }
             } catch (e: ApiError) { JSONObject().put("ok", false).put("error", e.message).put("status", e.status) }

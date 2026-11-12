@@ -37,6 +37,11 @@ export const Gear = (p) => <I {...p}><circle cx="12" cy="12" r="3" /><path d="M1
 export const Close = (p) => <I d="M6 6l12 12M18 6 6 18" {...p} />;
 export const Grip = (p) => <I d="M5 9h14M5 15h14" {...p} />;
 export const Send = (p) => <I d="M12 19V5M6 11l6-6 6 6" {...p} />;
+export const Gamepad = (p) => <I {...p}><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 4a2.4 2.4 0 0 1-4.1 1.2L14.3 16H9.7l-2.2 2.2a2.4 2.4 0 0 1-4.1-1.2l-.8-4A5 5 0 0 1 7.5 7z" /><path d="M8 10v3.5M6.25 11.75h3.5" /><circle cx="16" cy="10.6" r=".9" fill="currentColor" stroke="none" /><circle cx="17.8" cy="12.8" r=".9" fill="currentColor" stroke="none" /></I>;
+export const Rotate = (p) => <I {...p}><rect x="7" y="2.5" width="10" height="17" rx="2.5" transform="rotate(-90 12 12)" /><path d="M4 7.5V5a2 2 0 0 1 2-2h2.5M8.5 3 6.5 1M8.5 3l-2 2" /></I>;
+export const PadView = (p) => <I {...p}><rect x="4" y="5" width="11" height="9" rx="2" /><path d="M9 18h9a2 2 0 0 0 2-2V9" /></I>;
+export const PadMenu = (p) => <I d="M5 7h14M5 12h14M5 17h14" {...p} />;
+export const PadHome = (p) => <I {...p}><circle cx="12" cy="12" r="8.5" /><path d="M8.5 9.5l7 5M15.5 9.5l-7 5" /></I>;
 export const ChevronR = (p) => <I d="M9 5l7 7-7 7" {...p} />;
 export const Reload = (p) => <I {...p}><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 4.5v4h-4" /></I>;
 export const TabNew = (p) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M12 9v6M9 12h6" /></I>;

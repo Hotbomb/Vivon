@@ -13,6 +13,12 @@
  *   p                    answers "pong"
  * When stdin closes, the mouse goes away.
  *
+ * Run as "couchmouse pad <n>" it is a game controller instead (player n, 1 to 4), with an Xbox 360
+ * controller's ids so Android, Steam Link and games map it like the real thing. One line per change:
+ *   s <lx> <ly> <rx> <ry> <lt> <rt> <hx> <hy> <buttons>
+ * sticks -32767..32767 (y down is +), triggers 0..255, the d-pad -1..1, buttons a bit mask:
+ * A 1, B 2, X 4, Y 8, LB 16, RB 32, View 64, Menu 128, Home 256, left stick 512, right stick 1024.
+ *
  * Original code for couch-phone (MIT). Build: an Android NDK clang, see .github/workflows/build.yml.
  */
 #include <errno.h>
@@ -59,7 +65,74 @@ static int open_uinput(void) {
     return -1;
 }
 
-int main(void) {
+/* ---------------------------------------------------------------- the game controller */
+
+static const int PAD_KEYS[] = { BTN_A, BTN_B, BTN_X, BTN_Y, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR };
+#define PAD_NKEYS ((int) (sizeof PAD_KEYS / sizeof PAD_KEYS[0]))
+static const int PAD_AXES[] = { ABS_X, ABS_Y, ABS_RX, ABS_RY, ABS_Z, ABS_RZ, ABS_HAT0X, ABS_HAT0Y };
+
+static int pad(int player) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    fd = open_uinput();
+    if (fd < 0) { printf("fail cannot open uinput: %s\n", strerror(errno)); return 1; }
+    int ok = ioctl(fd, UI_SET_EVBIT, EV_KEY) >= 0 && ioctl(fd, UI_SET_EVBIT, EV_ABS) >= 0 && ioctl(fd, UI_SET_EVBIT, EV_SYN) >= 0;
+    for (int i = 0; ok && i < PAD_NKEYS; i++) ok = ioctl(fd, UI_SET_KEYBIT, PAD_KEYS[i]) >= 0;
+    for (int i = 0; ok && i < 8; i++) ok = ioctl(fd, UI_SET_ABSBIT, PAD_AXES[i]) >= 0;
+    if (!ok) { printf("fail uinput setup: %s\n", strerror(errno)); return 1; }
+
+    struct uinput_user_dev dev;
+    memset(&dev, 0, sizeof dev);
+    snprintf(dev.name, UINPUT_MAX_NAME_SIZE, "Couch Phone Controller %d", player);
+    dev.id.bustype = BUS_USB;
+    dev.id.vendor = 0x045e;    /* the Xbox 360 controller's ids: Android has its key layout built in */
+    dev.id.product = 0x028e;
+    dev.id.version = 0x0110;
+    for (int i = 0; i < 4; i++) {
+        int a = PAD_AXES[i];
+        dev.absmin[a] = -32768; dev.absmax[a] = 32767; dev.absfuzz[a] = 16; dev.absflat[a] = 128;
+    }
+    dev.absmin[ABS_Z] = 0; dev.absmax[ABS_Z] = 255;
+    dev.absmin[ABS_RZ] = 0; dev.absmax[ABS_RZ] = 255;
+    dev.absmin[ABS_HAT0X] = -1; dev.absmax[ABS_HAT0X] = 1;
+    dev.absmin[ABS_HAT0Y] = -1; dev.absmax[ABS_HAT0Y] = 1;
+    if (write(fd, &dev, sizeof dev) != (ssize_t) sizeof dev || ioctl(fd, UI_DEV_CREATE) < 0) {
+        printf("fail uinput create: %s\n", strerror(errno));
+        return 1;
+    }
+    printf("ready\n");
+
+    long last[8] = { 0 };
+    long lastButtons = 0;
+    char line[160];
+    while (fgets(line, sizeof line, stdin)) {
+        if (line[0] == 'p') { printf("pong\n"); continue; }
+        if (line[0] != 's') continue;
+        long v[8] = { 0 }, buttons = 0;
+        if (sscanf(line + 1, "%ld %ld %ld %ld %ld %ld %ld %ld %ld", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &buttons) != 9) {
+            printf("err bad state\n");
+            continue;
+        }
+        static const int lim[8] = { 32767, 32767, 32767, 32767, 255, 255, 1, 1 };
+        int changed = 0;
+        for (int i = 0; i < 8; i++) {
+            long lo = (i == 4 || i == 5) ? 0 : -lim[i];   /* triggers start at 0 */
+            long x = v[i] > lim[i] ? lim[i] : v[i] < lo ? lo : v[i];
+            if (x != last[i]) { emit(EV_ABS, PAD_AXES[i], (int) x); last[i] = x; changed = 1; }
+        }
+        for (int i = 0; i < PAD_NKEYS; i++) {
+            long bit = 1L << i;
+            if ((buttons & bit) != (lastButtons & bit)) { emit(EV_KEY, PAD_KEYS[i], (buttons & bit) ? 1 : 0); changed = 1; }
+        }
+        lastButtons = buttons;
+        if (changed) syn();
+    }
+    ioctl(fd, UI_DEV_DESTROY);
+    close(fd);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "pad") == 0) return pad(argc > 2 ? atoi(argv[2]) : 1);
     setvbuf(stdout, NULL, _IOLBF, 0);
     fd = open_uinput();
     if (fd < 0) { printf("fail cannot open uinput: %s\n", strerror(errno)); return 1; }

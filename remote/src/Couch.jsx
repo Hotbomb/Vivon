@@ -17,23 +17,25 @@ const isIos = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/.test(navig
 
 // One row under the pad: Keyboard, Speak and Air mouse. While a browser is in front on the TV
 // they shrink to icons and the browser's buttons join the same row (it scrolls sideways).
-export function Tools({ onKeyboard, onSpeak, onAirMouse, disabled, browser, say }) {
+export function Tools({ onKeyboard, onSpeak, onAirMouse, onPad, disabled, browser, say }) {
   if (browser) {
     return (
       <div className={`tools tools-browser ${disabled ? 'is-off' : ''}`} role="group" aria-label={t('tools')}>
         <button className="round glass bb-btn" aria-label={t('keyboard')} onClick={onKeyboard}><Ic.Keyboard size={20} /></button>
         <button className="round glass bb-btn" aria-label={t('speak')} onClick={onSpeak}><Ic.Mic size={20} /></button>
         <button className="round glass bb-btn" aria-label={t('air_mouse')} onClick={onAirMouse}><Ic.AirMouse size={20} /></button>
+        <button className="round glass bb-btn" aria-label={t('controller')} onClick={onPad}><Ic.Gamepad size={20} /></button>
         <span className="bb-sep" aria-hidden="true" />
         <BrowserButtons onAddress={onKeyboard} say={say} />
       </div>
     );
   }
   return (
-    <div className={`tools ${disabled ? 'is-off' : ''}`} role="group" aria-label={t('tools')}>
+    <div className={`tools four ${disabled ? 'is-off' : ''}`} role="group" aria-label={t('tools')}>
       <button className="tool glass" onClick={onKeyboard}><Ic.Keyboard size={20} /><span>{t('keyboard')}</span></button>
       <button className="tool glass" onClick={onSpeak}><Ic.Mic size={20} /><span>{t('speak')}</span></button>
       <button className="tool glass" onClick={onAirMouse}><Ic.AirMouse size={20} /><span>{t('air_mouse')}</span></button>
+      <button className="tool glass" onClick={onPad}><Ic.Gamepad size={20} /><span>{t('controller')}</span></button>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { AskSheet, MoreSheet, ArrangeSheet, PeopleSheet, Onboarding } from './Sh
 import { usePullDown, usePageDrag } from './gestures.js';
 import { Tools, KeyboardSheet, SpeakSheet, AirMouseSheet, SecureSheet, secure, BROWSERS, useSharedLink } from './Couch.jsx';
 import { ConnectSheet } from './Connect.jsx';
+import { ControllerScreen } from './Controller.jsx';
 import { padPointer, setPointerErrorHandler } from './pointer.js';
 import { t, useLang, setTvLang } from './i18n.js';
 
@@ -372,7 +373,7 @@ export default function App() {
       <Pad onPointer={tvKind === 'lg' ? (d) => api.pointer(d) : tvKind === 'dex' ? padPointer : null} onKey={onKey} offState={offState} wakeError={wakeError} onWake={onWake} onRetry={onRetry}
         tvName={thisTv?.name} onLivingRoom={() => { tick(); chooseTv(null); }} />
       {tvKind === 'dex' && <Tools onKeyboard={openKeyboard} onSpeak={openSpeak} onAirMouse={openAir} disabled={Boolean(offState)}
-        browser={!offState && BROWSERS.includes(tv?.app?.package)} say={say} />}
+        onPad={() => { tick(); setSheet('pad'); }} browser={!offState && BROWSERS.includes(tv?.app?.package)} say={say} />}
       <Controls tv={tv} onKey={onKey} onVolume={onVolume} />
       {wide && askOn && tvKind !== 'dex' && <AskButton onAsk={openAsk} quiet={Boolean(offState)} />}
     </div>
@@ -405,6 +406,7 @@ export default function App() {
       <MoreSheet ref={moreSheet} open={sheet === 'more'} tvs={tvs} tvId={tvId || 'living-room'} onTv={(id) => { tick(); chooseTv(id); }}
         picture={tv?.picture} pictureInfo={pictureInfo} onPicture={onPicture} onClose={() => setSheet(null)} sleepEnds={sleepEnds} sleepError={sleepError} onSleep={onSleep}
         onKey={onKey} onText={(text) => run(api.text(text), t('sent_to_tv'))} onArrange={() => setSheet('arrange')} onPeople={() => setSheet('people')} onConnect={(k) => setSheet(k)} say={say} />
+      <ControllerScreen open={sheet === 'pad'} onClose={() => setSheet(null)} />
       <ConnectSheet open={sheet === 'bluetooth' || sheet === 'wifi'} kind={sheet === 'wifi' ? 'wifi' : 'bluetooth'} onClose={() => setSheet(null)} say={say} />
       <ArrangeSheet open={sheet === 'arrange'} onClose={() => setSheet(null)} tvName={thisTv?.name} hidden={hidden} />
       <KeyboardSheet ref={kbInput} open={sheet === 'keyboard'} onClose={() => setSheet(null)} say={say} onSpeak={openSpeak} />
