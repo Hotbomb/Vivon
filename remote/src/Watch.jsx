@@ -3,6 +3,7 @@ import * as Ic from './icons.jsx';
 import { tick } from './haptics.js';
 import { logoFor } from './appLogos.js';
 import { t } from './i18n.js';
+import { AppGrid } from './AppGrid.jsx';
 
 // Names that fit under an icon, like the iPhone home screen.
 const SHORT = { 'sbs-on-demand': 'SBS', 'prime-video': 'Prime Video', 'disney-plus': 'Disney+', 'paramount-plus': 'Paramount+', 'foxtel-go': 'Foxtel', 'hbo-max': 'HBO Max' };
@@ -38,7 +39,7 @@ function Poster({ show, sub, onPlay, dim }) {
   );
 }
 
-export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, screens, serviceName, onPlay, onLaunch, onScreen, wide }) {
+export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, screens, serviceName, onPlay, onLaunch, onScreen, wide, ideas = true }) {
   const cont = contIn || [];
   const picks = (recs?.picks || []).filter((s) => s.playable !== false);
   const ready = (screens || []).filter((s) => s.ready);
@@ -58,20 +59,9 @@ export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, scr
         ) : <p className="empty">{contIn === false ? t('couldnt_load') : contIn ? t('shows_wait') : t('loading')}</p>}
       </section>
 
-      <section>
-        <h3>{t('apps')}</h3>
-        {apps === null && <p className="empty">{t('loading')}</p>}
-        {apps === false && <p className="empty">{t('couldnt_load_apps')}</p>}
-        <div className="apps">
-          {(apps || []).filter((a) => a.installed !== false && !['settings', 'home', 'moonlight'].includes(a.id) && !(hidden || []).includes(a.package)).map((a) => (
-            <button key={a.id} className="app-tile" style={{ '--tile': a.colour || '#3a3a3c' }} onClick={() => { tick(); onLaunch(a); }}>
-              {logoFor(a) ? <AppIcon src={logoFor(a)} /> : <span className="app-icon"><span className="app-icon-name">{a.name}</span></span>}
-              <span className="app-label">{SHORT[a.id] || a.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      <AppGrid apps={apps} tvHidden={hidden} logoFor={logoFor} AppIcon={AppIcon} short={SHORT} onLaunch={onLaunch} />
 
+      {ideas && (
       <section>
         <h3>{t('ideas_tonight')}</h3>
         {!showPicks ? (
@@ -86,6 +76,7 @@ export function Watch({ pull, people, who, recs, cont: contIn, apps, hidden, scr
           </div>
         ) : <p className="empty">{recs === false ? t('couldnt_load_ideas') : recs ? t('no_ideas') : t('loading')}</p>}
       </section>
+      )}
 
       {ready.length > 0 && (
         <section>

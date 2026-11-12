@@ -123,6 +123,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             }
         }
         if (!authed(s)) return json(401, err("pair this phone first: open this page on your phone and type the code from the TV"))
+        // An app's own icon, as a PNG (cached), for the remote's Watch page and the TV home.
+        if (m == Method.GET && path.startsWith("/api/app-icon/")) return Icons.response(path.removePrefix("/api/app-icon/"))
 
         return when ("$m $path") {
             "GET /api/now" -> json(200, Now.payload())
@@ -169,6 +171,15 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                 json(200, ok())
             }
             "GET /api/app-order" -> json(200, appOrder())
+            // The remote's Watch page: its own order and hidden apps (dragged and edited on the phone).
+            "GET /api/remote-apps" -> json(200, ok(Store.readJson("remote-apps.json") as? JSONObject ?: JSONObject().put("order", JSONArray()).put("hidden", JSONArray())).put("saved", Store.readJson("remote-apps.json") != null))
+            "POST /api/remote-apps" -> {
+                val b = body(s)
+                fun pkgs(k: String) = JSONArray().also { out -> b.optJSONArray(k)?.let { a -> for (i in 0 until minOf(a.length(), 400)) a.optString(i).takeIf { Regex("[A-Za-z0-9_.]{1,200}").matches(it) }?.let { out.put(it) } } }
+                val saved = JSONObject().put("order", pkgs("order")).put("hidden", pkgs("hidden"))
+                Store.writeJson("remote-apps.json", saved)
+                json(200, ok(saved).put("saved", true))
+            }
             // Puts any installed app on the home's dock (the end of it), unhiding it if it was hidden.
             "POST /api/home-add" -> { homeAdd(body(s).optString("package")); refreshHomeAfter(s); json(200, appOrder()) }
             "POST /api/app-order" -> {
@@ -217,7 +228,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
         val arr = JSONArray()
         Tv.launchables().map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
             .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, name) -> arr.put(JSONObject().put("id", pkg).put("name", name).put("package", pkg).put("colour", "#2A2A30").put("installed", true)) }
+            .forEach { (pkg, name) -> arr.put(JSONObject().put("id", pkg).put("name", name).put("package", pkg).put("colour", "#2A2A30").put("installed", true)
+                .put("icon", "/api/app-icon/$pkg")) }
         return arr
     }
 

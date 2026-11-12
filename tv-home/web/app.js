@@ -442,6 +442,8 @@
   function iconUrl(pkg) {
     if (!pkg) return null;
     if (TV) return TV.iconUrl ? TV.iconUrl(pkg) : "http://tvos.invalid/icon/" + pkg;   // Samsung: samsung/app/tizen.js
+    // Couch Phone: the phone draws each app's own icon (Icons.kt)
+    if (window.COUCH_CONFIG && window.COUCH_CONFIG.app === "couch-phone" && !MOCK) return "/api/app-icon/" + encodeURIComponent(pkg);
     return window.MOCK_ICON ? window.MOCK_ICON(pkg) : null;
   }
 
