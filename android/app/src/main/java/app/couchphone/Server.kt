@@ -197,7 +197,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             "GET /api/settings" -> json(200, settings())
             "POST /api/settings" -> { saveSettings(body(s)); refreshHomeAfter(s); json(200, settings()) }
             "GET /api/home" -> json(200, ok().put("on", App.homeEnabled(App.instance)).put("held", HomeRole.held(App.instance)).put("dex", JSONObject(Dex.describe())))
-            "POST /api/home/open" -> { Thread { Dex.openHome() }.start(); json(200, ok()) }
+            "POST /api/home/open" -> { Thread { Tv.pauseBrowser(); Dex.openHome() }.start(); json(200, ok()) }
             "GET /api/root" -> json(200, ok(JSONObject(Root.status())).put("dex", JSONObject(Dex.describe())))
             "POST /api/phones/forget" -> { Auth.forgetAll(); json(200, ok().put("note", "Every phone must pair again.")) }
             // Not in couch-phone (yet): answer the way couch-tv's remote and home expect for "nothing here".
@@ -236,6 +236,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
     private fun launch(target: String): Response {
         if (target.isEmpty()) throw ApiError(400, "app is required")
         if (target == "home" || target == BuildConfig.APPLICATION_ID) {
+            Tv.pauseBrowser()
             Dex.openHome()
             return json(200, ok().put("app", Now.describe(BuildConfig.APPLICATION_ID)))
         }
@@ -248,6 +249,7 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
             return json(200, ok().put("app", Now.describe("com.android.settings")))
         }
         if (!Regex("[A-Za-z0-9_.]+").matches(target) || !Tv.hasPackage(target)) throw ApiError(404, "$target is not installed")
+        Tv.pauseBrowser(except = target)
         if (!Dex.launchPackage(target)) throw ApiError(404, "${Tv.label(target)} has no screen to open")
         Now.push()
         return json(200, ok().put("app", Now.describe(target)))

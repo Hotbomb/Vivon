@@ -34,7 +34,7 @@ object Tv {
         }
         when (code) {
             // DeX's own Home key would show Samsung's desktop: open this home instead.
-            KeyEvent.KEYCODE_HOME -> { Dex.openHome(); return "HOME" }
+            KeyEvent.KEYCODE_HOME -> { pauseBrowser(); Dex.openHome(); return "HOME" }
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE -> { volumeKey(code); return KeyEvent.keyCodeToString(code) }
         }
         // Play, pause and skip go to whatever is playing, wherever it is.
@@ -124,6 +124,20 @@ object Tv {
     private val MEDIA = setOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
         KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_STOP,
         KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+
+    /**
+     * Leaving a browser (Home, or another app from the remote): pause what it plays. In DeX the
+     * browser stays "on screen" behind the home, so Chrome never pauses by itself and the sound goes
+     * on. Only browsers: music apps keep playing behind the home, as they should.
+     */
+    fun pauseBrowser(except: String? = null) {
+        val front = runCatching { frontCached() }.getOrNull() ?: return
+        if (front !in BROWSERS || front == except) return
+        media(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        // and the same through the media sessions directly, in case the key went elsewhere
+        if (Root.available == true) Thread { Root.shOrNull("cmd media_session dispatch pause 2>&1", 4000) }.start()
+        frontAt = 0L   // the app in front is about to change
+    }
 
     private fun media(code: Int) {
         audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
