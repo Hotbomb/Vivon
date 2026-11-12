@@ -37,6 +37,15 @@ export const Gear = (p) => <I {...p}><circle cx="12" cy="12" r="3" /><path d="M1
 export const Close = (p) => <I d="M6 6l12 12M18 6 6 18" {...p} />;
 export const Grip = (p) => <I d="M5 9h14M5 15h14" {...p} />;
 export const Send = (p) => <I d="M12 19V5M6 11l6-6 6 6" {...p} />;
+export const ChevronR = (p) => <I d="M9 5l7 7-7 7" {...p} />;
+export const Reload = (p) => <I {...p}><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 4.5v4h-4" /></I>;
+export const TabNew = (p) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M12 9v6M9 12h6" /></I>;
+export const TabNext = (p) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10.5 9l3 3-3 3" /></I>;
+export const TabClose = (p) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" /></I>;
+export const ZoomIn = (p) => <I {...p}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L20 20M10.5 8v5M8 10.5h5" /></I>;
+export const ZoomOut = (p) => <I {...p}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L20 20M8 10.5h5" /></I>;
+export const Search = (p) => <I {...p}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L20 20" /></I>;
+export const Link = (p) => <I {...p}><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></I>;
 export const Bluetooth = (p) => <I d="M7 7l10 10-5 5V2l5 5L7 17" {...p} />;
 export const Wifi = (p) => <I {...p}><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.2a10 10 0 0 1 13 0M9 15.8a5 5 0 0 1 6 0" /><circle cx="12" cy="19" r="1" fill="currentColor" /></I>;
 export const Sparkle = (p) => <I d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" {...p} />;

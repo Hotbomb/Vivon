@@ -119,6 +119,20 @@ object Dex {
         return away.isNotEmpty()
     }
 
+    /** Opens a web address on the TV, in `browser` if given (its window moved to the TV first). */
+    fun openUrl(url: String, browser: String?) {
+        val d = target()
+        if (Root.available == true) {
+            if (browser != null && d != Display.DEFAULT_DISPLAY) moveToTv(browser, d)
+            val q = "'" + url.replace("'", "'\\''") + "'"
+            val out = Root.shOrNull("am start --display $d -f 0x10000000 -a android.intent.action.VIEW -d $q ${browser ?: ""} 2>&1", 12_000)
+            if (out != null && !out.contains("Error") && !out.contains("Exception")) return
+        }
+        val i = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        if (browser != null) i.setPackage(browser)
+        plainStart(i, d)
+    }
+
     /** Opens a system screen by its action (Bluetooth or Wi-Fi settings) on the TV. */
     fun openAction(action: String): Boolean {
         val d = target()

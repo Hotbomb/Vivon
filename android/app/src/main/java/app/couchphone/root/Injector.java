@@ -108,18 +108,37 @@ public final class Injector {
                 flags | KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD);
     }
 
-    /** A key press. With Ctrl in meta (paste is Ctrl+V), the Ctrl key itself goes down first and up last. */
+    // The modifier keys a shortcut can hold: Ctrl, Alt and Shift, with the meta state each one sets.
+    private static final int[][] MODS = {
+        { KeyEvent.META_CTRL_ON, KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON },
+        { KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON },
+        { KeyEvent.META_SHIFT_ON, KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.META_SHIFT_ON | KeyEvent.META_SHIFT_LEFT_ON },
+    };
+
+    /**
+     * A key press. With Ctrl, Alt or Shift in meta (paste is Ctrl+V, Chrome's forward is Alt+Right),
+     * those keys themselves go down first and come up last, as on a real keyboard.
+     */
     private static void key(int code, int display, boolean longPress, int meta) throws Exception {
         long down = SystemClock.uptimeMillis();
-        boolean ctrl = (meta & KeyEvent.META_CTRL_ON) != 0;
-        if (ctrl) send(ev(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, KeyEvent.META_CTRL_LEFT_ON | KeyEvent.META_CTRL_ON), display);
+        int held = 0;
+        for (int[] m : MODS) {
+            if ((meta & m[0]) == 0) continue;
+            held |= m[2];
+            send(ev(down, down, KeyEvent.ACTION_DOWN, m[1], 0, 0, held), display);
+        }
         send(ev(down, down, KeyEvent.ACTION_DOWN, code, 0, 0, meta), display);
         if (longPress) {
             Thread.sleep(600);
             send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, code, 1, KeyEvent.FLAG_LONG_PRESS, meta), display);
         }
         send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, meta), display);
-        if (ctrl) send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, 0), display);
+        for (int i = MODS.length - 1; i >= 0; i--) {
+            int[] m = MODS[i];
+            if ((meta & m[0]) == 0) continue;
+            held &= ~m[2];
+            send(ev(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, m[1], 0, 0, held), display);
+        }
     }
 
     // ---------------------------------------------------------------- the mouse

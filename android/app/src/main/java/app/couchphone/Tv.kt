@@ -35,6 +35,56 @@ object Tv {
     }
 
     /**
+     * Browser shortcuts (Chrome's own keyboard shortcuts, which Samsung Internet and Firefox share),
+     * sent to the app in front on the TV.
+     */
+    private val CTRL = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+    private val SHORTCUTS = mapOf(
+        "back" to (KeyEvent.KEYCODE_DPAD_LEFT to (KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON)),
+        "forward" to (KeyEvent.KEYCODE_DPAD_RIGHT to (KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON)),
+        "reload" to (KeyEvent.KEYCODE_R to CTRL),
+        "address" to (KeyEvent.KEYCODE_L to CTRL),
+        "new_tab" to (KeyEvent.KEYCODE_T to CTRL),
+        "close_tab" to (KeyEvent.KEYCODE_W to CTRL),
+        "next_tab" to (KeyEvent.KEYCODE_TAB to CTRL),
+        "prev_tab" to (KeyEvent.KEYCODE_TAB to (CTRL or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)),
+        "reopen_tab" to (KeyEvent.KEYCODE_T to (CTRL or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)),
+        "zoom_in" to (KeyEvent.KEYCODE_EQUALS to CTRL),
+        "zoom_out" to (KeyEvent.KEYCODE_MINUS to CTRL),
+        "zoom_reset" to (KeyEvent.KEYCODE_0 to CTRL),
+        "find" to (KeyEvent.KEYCODE_F to CTRL),
+        "page_down" to (KeyEvent.KEYCODE_SPACE to 0),
+        "page_up" to (KeyEvent.KEYCODE_SPACE to (KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)),
+        "fullscreen" to (KeyEvent.KEYCODE_F to 0),   // YouTube and most web players: F for full screen
+    )
+
+    fun shortcut(name: String) {
+        val (code, meta) = SHORTCUTS[name] ?: throw ApiError(400, "unknown shortcut: $name. Known: ${SHORTCUTS.keys.joinToString()}")
+        RootInput.key(code, Dex.target(), false, meta)
+    }
+
+    /**
+     * Opens a web address in the browser on the TV (Chrome when it is installed). Words that are
+     * not an address are searched for. Returns the address opened.
+     */
+    fun openUrl(raw: String): String {
+        val t = raw.trim().take(4000)
+        if (t.isEmpty()) throw ApiError(400, "url is required")
+        // the first web address in what was shared ("Look at this https://...")
+        val found = Regex("https?://\\S+").find(t)?.value
+        val url = when {
+            found != null -> found
+            !t.contains(' ') && Regex("^[\\w-]+(\\.[\\w-]+)+(:\\d+)?(/\\S*)?$").matches(t) -> "https://$t"
+            else -> "https://www.google.com/search?q=" + java.net.URLEncoder.encode(t, "UTF-8")
+        }
+        val scheme = android.net.Uri.parse(url).scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") throw ApiError(400, "Only web addresses (http or https) can be opened.")
+        Dex.openUrl(url, BROWSERS.firstOrNull { hasPackage(it) })
+        return url
+    }
+    private val BROWSERS = listOf("com.android.chrome", "com.chrome.beta", "com.sec.android.app.sbrowser", "org.mozilla.firefox")
+
+    /**
      * Types text on the TV. Plain letters, numbers and symbols are typed key by key. Text with
      * anything the virtual keyboard has no key for (accents, emoji, other alphabets) is put on the
      * clipboard and pasted with Ctrl+V, which works in apps, browsers and the home screen alike.

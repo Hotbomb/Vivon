@@ -135,6 +135,8 @@ class Server(private val ctx: Context, port: Int, private val secure: Boolean = 
                 val t = body(s).optString("text").ifEmpty { throw ApiError(400, "text is required") }
                 Tv.text(t); json(200, ok())
             }
+            "POST /api/shortcut" -> { Tv.shortcut(body(s).optString("name")); json(200, ok()) }
+            "POST /api/open-url" -> { val u = Tv.openUrl(body(s).optString("url")); json(200, ok().put("url", u)) }
             "POST /api/pointer" -> { Pointer.handle(body(s)); json(200, ok()) }
             // The TV picture (DeX's resolution and text size) and the phone's own screen while on the TV.
             "GET /api/battery" -> json(200, ok(App.battery()))

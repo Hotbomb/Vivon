@@ -68,6 +68,14 @@ pointer appears on the TV at once. Drag to move, tap to click, two-finger tap to
 two fingers to scroll. Couch Phone draws it itself and sends real mouse clicks, so Chrome works
 as with a plugged-in mouse. It hides after 3 minutes unused.
 
+**Chrome:** while a browser is in front on the TV, the remote shows a browser bar under Keyboard,
+Speak and Air mouse: back, forward, reload, **Address** (jumps to the address bar and opens the
+keyboard), new tab, next tab, close tab, zoom out and in. It scrolls sideways.
+
+**Open a link on the TV:** in the remote's TV sheet, paste a web address (or type words to search)
+and it opens in Chrome on the TV. On Android, once the secure remote is on your home screen, it
+also shows in the Share menu: share a link from any app to **TV** and it opens on the TV.
+
 **On the remote's TV sheet** (pull down): **Bluetooth** and **Wi-Fi** (pair, connect, unpair, join,
 forget), and **Arrange apps → Add an app to the home**, which lists every app on the phone (hidden
 ones too) and puts the one you tap on the home row.

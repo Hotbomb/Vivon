@@ -596,3 +596,8 @@ main.single { display: flex; flex-direction: column; padding-left: var(--sa-l); 
 .cn-pw input { flex: 1; min-width: 0; height: 44px; border-radius: 22px; padding: 0 16px; border: 0; font: inherit; font-size: 16px;
   color: var(--ink); background: rgba(255, 255, 255, 0.1); }
 .cn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Couch Phone: the browser bar (Chrome's shortcuts) under the tools row */
+.browser-bar { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 4px; margin: -2px -2px 0; -webkit-overflow-scrolling: touch; }
+.browser-bar::-webkit-scrollbar { display: none; }
+.browser-bar .bb-btn { flex: none; width: 46px; height: 46px; }
+.browser-bar .bb-address { flex: none; height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 18px; font-size: 15px; }

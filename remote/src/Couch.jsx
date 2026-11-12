@@ -25,6 +25,44 @@ export function Tools({ onKeyboard, onSpeak, onAirMouse, disabled }) {
   );
 }
 
+// ---------------------------------------------------------------- the browser bar
+
+// Shown while a browser is in front on the TV: Chrome's own keyboard shortcuts as buttons.
+export const BROWSERS = ['com.android.chrome', 'com.chrome.beta', 'com.sec.android.app.sbrowser', 'org.mozilla.firefox'];
+
+export function BrowserBar({ onAddress, say }) {
+  const send = (name) => { tick(); api.shortcut(name).catch((e) => say?.(e.message, 'err')); };
+  const B = ({ name, label, children }) => (
+    <button type="button" className="round glass bb-btn" aria-label={label} onClick={() => send(name)}>{children}</button>
+  );
+  return (
+    <div className="browser-bar" role="group" aria-label={t('bb_label')}>
+      <B name="back" label={t('bb_back')}><Ic.Back size={20} /></B>
+      <B name="forward" label={t('bb_forward')}><Ic.ChevronR size={20} /></B>
+      <B name="reload" label={t('bb_reload')}><Ic.Reload size={20} /></B>
+      <button type="button" className="pill glass bb-address" onClick={() => { tick(); api.shortcut('address').then(onAddress, (e) => say?.(e.message, 'err')); }}>
+        <Ic.Search size={18} /> <span>{t('bb_address')}</span>
+      </button>
+      <B name="new_tab" label={t('bb_new_tab')}><Ic.TabNew size={20} /></B>
+      <B name="next_tab" label={t('bb_next_tab')}><Ic.TabNext size={20} /></B>
+      <B name="close_tab" label={t('bb_close_tab')}><Ic.TabClose size={20} /></B>
+      <B name="zoom_out" label={t('bb_zoom_out')}><Ic.ZoomOut size={20} /></B>
+      <B name="zoom_in" label={t('bb_zoom_in')}><Ic.ZoomIn size={20} /></B>
+    </div>
+  );
+}
+
+/** A link shared to the remote (Android's Share menu, once it is on the home screen): open it on the TV. */
+export function useSharedLink(say) {
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/share') return;
+    const q = new URLSearchParams(window.location.search);
+    const text = [q.get('url'), q.get('text'), q.get('title')].find((x) => x && /https?:\/\//.test(x)) || q.get('url') || q.get('text') || '';
+    window.history.replaceState({}, '', '/');
+    if (text) api.openUrl(text).then(() => say(t('link_opened')), (e) => say(e.message, 'err'));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 // One request at a time, in order, so typed letters and backspaces reach the TV as typed.
 function useQueue(say) {
   const q = useRef(Promise.resolve());
